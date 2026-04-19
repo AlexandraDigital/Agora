@@ -1,0 +1,16 @@
+name = "agora"
+main = "worker/src/index.js"
+compatibility_date = "2026-04-19"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "agora-db"
+database_id = "YOUR_D1_DATABASE_ID"
+
+[env.production]
+name = "agora-prod"
+route = "api/*"
+
+[env.staging]
+name = "agora-staging"
+route = "api-staging/*"
