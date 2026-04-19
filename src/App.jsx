@@ -21,23 +21,21 @@ const T = {
   mono: "'Courier New', Courier, monospace",
 };
 
-const AVATAR_COLORS = ["#7b6fa0","#4a7c59","#c87941","#4a7b8a","#8a4a6b","#5c7a4a","#7a5c4a","#4a5c8a"];
-const now = Date.now();
+// ── API config ───────────────────────────────────────────────────
+// In development: set VITE_API_URL in a .env.local file.
+// In production:  set VITE_API_URL in Cloudflare Pages environment variables.
+const API = import.meta.env.VITE_API_URL || "";
 
-const SEED_USERS = [
-  { id:"u_maven", username:"maven", displayName:"Maya Chen", bio:"photographer · light chaser · never enough coffee", pw:"maya123", avatar:"MC", avatarColor:"#7b6fa0", followers:["u_rowan","u_pixel"], following:["u_rowan"], joinedAt: now - 86400000*180 },
-  { id:"u_rowan", username:"rowan", displayName:"Rowan Ellis", bio:"writing about small things · he/him", pw:"rowan123", avatar:"RE", avatarColor:"#4a7c59", followers:["u_maven"], following:["u_maven","u_pixel"], joinedAt: now - 86400000*220 },
-  { id:"u_pixel", username:"pixel", displayName:"Pixel Vance", bio:"building tools in public · open source or bust", pw:"pixel123", avatar:"PV", avatarColor:"#c87941", followers:["u_rowan"], following:["u_maven"], joinedAt: now - 86400000*90 },
-];
+const authHeaders = (token) => ({
+  "Content-Type": "application/json",
+  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+});
 
-const SEED_POSTS = [
-  { id:"p1", authorId:"u_maven", content:"The morning light through the studio window hits different in November. Been spending time just watching dust float in the air. No agenda, no deadlines. Just light.\n\n#slowmorning #light #photography", timestamp: now - 3600000, likes:["u_rowan"], comments:[{ id:"c1", authorId:"u_rowan", text:"this is incredibly peaceful. needed this today.", timestamp: now - 3000000 }] },
-  { id:"p2", authorId:"u_rowan", content:"Three things I noticed today:\n\n1. My neighbor finally fixed the gate that's been creaking since March.\n2. The library has a new section just for local zines.\n3. Good bread makes everything feel okay.\n\n#smallthings #gratitude", timestamp: now - 7200000, likes:["u_maven","u_pixel"], comments:[] },
-  { id:"p3", authorId:"u_pixel", content:"Just shipped a tiny utility that converts clipboard contents to markdown tables. No analytics. No tracking. No sign-up required. Just a tool that does one thing.\n\n#buildinpublic #tools #opensource", timestamp: now - 14400000, likes:["u_maven"], comments:[{ id:"c2", authorId:"u_maven", text:"this is exactly what I needed last week!", timestamp: now - 13000000 }] },
-  { id:"p4", authorId:"u_maven", content:"Hot take: the best camera is the one that makes you go outside. Specs don't matter. The one that's in your bag matters.\n\n#photography #gear", timestamp: now - 86400000, likes:["u_rowan","u_pixel"], comments:[] },
-  { id:"p5", authorId:"u_pixel", content:"Been thinking about why some software feels like it respects you and some doesn't.\n\nThe ones that do: don't move your buttons between updates, don't add notifications you didn't ask for, don't hide the delete button.\n\nThat's it really.\n\n#design #tech #software", timestamp: now - 172800000, likes:["u_maven","u_rowan"], comments:[] },
-  { id:"p6", authorId:"u_rowan", content:"Reading a book where I physically cannot tell what page I'm on. Page numbers are at the center top and chapter headers are at the bottom. I have no control and I'm thriving.\n\n#books #reading", timestamp: now - 259200000, likes:["u_maven"], comments:[] },
-];
+const api = {
+  post: (path, body, token) => fetch(`${API}${path}`, { method:"POST", headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
+  put:  (path, body, token) => fetch(`${API}${path}`, { method:"PUT",  headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
+  get:  (path, token)       => fetch(`${API}${path}`, { headers:authHeaders(token) }).then(r=>r.json()),
+};
 
 const fmtTime = (ts) => {
   const d = Date.now() - ts;
@@ -504,20 +502,25 @@ function ComposeModal({ cu, onPost, onClose }) {
 }
 
 function AuthScreen({ onLogin, onSignup }) {
-  const [mode, setMode] = useState("login");
+  const [mode, setMode] = useState("signup");
   const [un, setUn] = useState(""); const [pw, setPw] = useState("");
   const [dn, setDn] = useState(""); const [bio, setBio] = useState("");
   const [err, setErr] = useState("");
-  const submit = () => {
-    setErr("");
-    if (mode==="login") { if(!onLogin(un,pw)) setErr("Username or password incorrect."); }
-    else {
-      if(!un||!pw||!dn){ setErr("Please fill in all required fields."); return; }
-      if(un.length<3){ setErr("Username must be at least 3 characters."); return; }
-      if(pw.length<8){ setErr("Password must be at least 8 characters."); return; }
-      if(!/^[a-z0-9_]+$/.test(un)){ setErr("Username can only contain letters, numbers, underscores."); return; }
-      if(!onSignup(un,pw,dn,bio)) setErr("Username already taken.");
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setErr(""); setBusy(true);
+    if (mode==="login") {
+      const ok = await onLogin(un, pw);
+      if (!ok) setErr("Username or password incorrect.");
+    } else {
+      if(!un||!pw||!dn){ setErr("Please fill in all required fields."); setBusy(false); return; }
+      if(un.length<3){ setErr("Username must be at least 3 characters."); setBusy(false); return; }
+      if(pw.length<8){ setErr("Password must be at least 8 characters."); setBusy(false); return; }
+      if(!/^[a-z0-9_]+$/.test(un)){ setErr("Username can only contain letters, numbers, underscores."); setBusy(false); return; }
+      const res = await onSignup(un, pw, dn, bio);
+      if (res !== true) setErr(res || "Username already taken.");
     }
+    setBusy(false);
   };
   return (
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
@@ -540,20 +543,15 @@ function AuthScreen({ onLogin, onSignup }) {
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
             {mode==="signup" && <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Display name *</label><input value={dn} onChange={e=>setDn(e.target.value)} placeholder="Your name" style={inp}/></div>}
             <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Username *</label><input value={un} onChange={e=>setUn(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,""))} placeholder="your_username" style={inp}/></div>
-            <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Password *</label><input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder={mode==="signup"?"Min. 8 characters":"••••••••"} style={inp} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
+            <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Password *</label><input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder={mode==="signup"?"Min. 8 characters":"••••••••"} style={inp} onKeyDown={e=>e.key==="Enter"&&!busy&&submit()}/></div>
             {mode==="signup" && <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Bio (optional)</label><input value={bio} onChange={e=>setBio(e.target.value)} placeholder="A few words about you" style={inp}/></div>}
             {err && <div style={{ color:C.accent, fontSize:13, fontFamily:T.body }}>{err}</div>}
-            <button onClick={submit} style={{ background:C.text, color:"#fff", border:"none", borderRadius:8, padding:"12px 0", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:T.body, marginTop:4 }}>{mode==="login"?"Sign in":"Create account"}</button>
+            <button onClick={submit} disabled={busy} style={{ background:busy?C.border:C.text, color:busy?C.textMuted:"#fff", border:"none", borderRadius:8, padding:"12px 0", fontSize:15, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:T.body, marginTop:4 }}>{busy?"Please wait…":mode==="login"?"Sign in":"Create account"}</button>
           </div>
-          {mode==="login" && (
-            <div style={{ marginTop:16, fontSize:11, color:C.textMuted, fontFamily:T.body, textAlign:"center", lineHeight:1.7 }}>
-              Demo accounts:<br/>
-              <strong>maven</strong> / maya123 &nbsp;·&nbsp; <strong>rowan</strong> / rowan123 &nbsp;·&nbsp; <strong>pixel</strong> / pixel123
-            </div>
-          )}
+
         </div>
         <div style={{ textAlign:"center", marginTop:20, fontSize:12, color:C.textMuted, fontFamily:T.body, lineHeight:1.7 }}>
-          All data stays in your browser only.<br/>No servers. No tracking. No data sold.
+          No tracking. No algorithm. No ads.
         </div>
       </div>
     </div>
@@ -561,71 +559,110 @@ function AuthScreen({ onLogin, onSignup }) {
 }
 
 export default function Agora() {
-  const [cu, setCu] = useState(null);
-  const [users, setUsers] = useState(SEED_USERS);
-  const [posts, setPosts] = useState(SEED_POSTS);
+  const [cu, setCu] = useState(null);         // current user object
+  const [token, setToken] = useState(null);   // auth token
+  const [users, setUsers] = useState([]);
+  const [posts, setPosts] = useState([]);
   const [screen, setScreen] = useState("feed");
   const [profileUid, setProfileUid] = useState(null);
   const [composing, setComposing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(()=>{
-    try {
-      const ur = localStorage.getItem("ag_users");
-      const pr = localStorage.getItem("ag_posts");
-      const cr = localStorage.getItem("ag_cu");
-      if(ur) setUsers(JSON.parse(ur));
-      if(pr) setPosts(JSON.parse(pr));
-      if(cr) setCu(JSON.parse(cr));
-    } catch{}
-  },[]);
+  // Restore session from localStorage (token + user only — posts/users come from API)
+  useEffect(() => {
+    const savedToken = localStorage.getItem("ag_token");
+    const savedUser  = localStorage.getItem("ag_cu");
+    if (savedToken && savedUser) {
+      setToken(savedToken);
+      setCu(JSON.parse(savedUser));
+    }
+    setLoading(false);
+  }, []);
 
-  const persist = (nu,np,nc) => {
-    try { localStorage.setItem("ag_users",JSON.stringify(nu)); localStorage.setItem("ag_posts",JSON.stringify(np)); localStorage.setItem("ag_cu",JSON.stringify(nc)); } catch{}
+  // Fetch users + posts whenever we have a session
+  useEffect(() => {
+    if (!cu || !token) return;
+    const load = async () => {
+      const [us, ps] = await Promise.all([
+        api.get("/api/users", token),
+        api.get(`/api/posts?feed=1`, token),
+      ]);
+      if (!us.error) setUsers(us);
+      if (!ps.error) setPosts(ps);
+    };
+    load();
+  }, [cu?.id]);
+
+  const login = async (un, pw) => {
+    const res = await api.post("/api/login", { username: un, password: pw });
+    if (res.error) return false;
+    setCu(res.user); setToken(res.token);
+    localStorage.setItem("ag_token", res.token);
+    localStorage.setItem("ag_cu", JSON.stringify(res.user));
+    return true;
   };
 
-  const login=(un,pw)=>{ const u=users.find(x=>x.username===un&&x.pw===pw); if(!u) return false; setCu(u); persist(users,posts,u); return true; };
-  const signup=(un,pw,dn,bio)=>{
-    if(users.find(u=>u.username===un)) return false;
-    const initials=dn.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
-    const nu={id:`u_${Date.now()}`,username:un,displayName:dn,bio:bio||"",pw,avatar:initials,avatarColor:AVATAR_COLORS[Math.floor(Math.random()*AVATAR_COLORS.length)],followers:[],following:[],joinedAt:Date.now()};
-    const newU=[...users,nu]; setUsers(newU); setCu(nu); persist(newU,posts,nu); return true;
+  const signup = async (un, pw, dn, bio) => {
+    const res = await api.post("/api/signup", { username:un, password:pw, displayName:dn, bio });
+    if (res.error) return res.error;
+    setCu(res.user); setToken(res.token);
+    localStorage.setItem("ag_token", res.token);
+    localStorage.setItem("ag_cu", JSON.stringify(res.user));
+    return true;
   };
-  const logout=async()=>{ setCu(null); try{localStorage.removeItem("ag_cu");}catch{} };
 
-  const follow=(uid)=>{
-    let newCu={...cu};
-    const newU=users.map(u=>{
-      if(u.id===cu.id){ const following=cu.following.includes(uid)?cu.following.filter(id=>id!==uid):[...cu.following,uid]; newCu={...u,following}; return newCu; }
-      if(u.id===uid){ const followers=cu.following.includes(uid)?u.followers.filter(id=>id!==cu.id):[...u.followers,cu.id]; return{...u,followers}; }
+  const logout = () => {
+    setCu(null); setToken(null); setUsers([]); setPosts([]);
+    localStorage.removeItem("ag_token");
+    localStorage.removeItem("ag_cu");
+  };
+
+  const follow = async (uid) => {
+    await api.post(`/api/follow/${uid}`, {}, token);
+    // Optimistic update
+    const isFollowing = cu.following.includes(uid);
+    const newCu = { ...cu, following: isFollowing ? cu.following.filter(id=>id!==uid) : [...cu.following, uid] };
+    setCu(newCu);
+    localStorage.setItem("ag_cu", JSON.stringify(newCu));
+    setUsers(prev => prev.map(u => {
+      if (u.id === uid) return { ...u, followers: isFollowing ? u.followers.filter(id=>id!==cu.id) : [...u.followers, cu.id] };
       return u;
-    });
-    setUsers(newU); setCu(newCu); persist(newU,posts,newCu);
+    }));
   };
 
-  const like=(pid)=>{
-    const np=posts.map(p=>{ if(p.id!==pid)return p; const liked=p.likes.includes(cu.id); return{...p,likes:liked?p.likes.filter(id=>id!==cu.id):[...p.likes,cu.id]}; });
-    setPosts(np); persist(users,np,cu);
+  const like = async (pid) => {
+    await api.post(`/api/posts/${pid}/like`, {}, token);
+    // Optimistic update
+    setPosts(prev => prev.map(p => {
+      if (p.id !== pid) return p;
+      const liked = p.likes.includes(cu.id);
+      return { ...p, likes: liked ? p.likes.filter(id=>id!==cu.id) : [...p.likes, cu.id] };
+    }));
   };
 
-  const comment=(pid,text)=>{
-    const np=posts.map(p=>{ if(p.id!==pid)return p; return{...p,comments:[...p.comments,{id:`c_${Date.now()}`,authorId:cu.id,text,timestamp:Date.now()}]}; });
-    setPosts(np); persist(users,np,cu);
+  const comment = async (pid, text) => {
+    const res = await api.post(`/api/posts/${pid}/comment`, { text }, token);
+    if (res.error) return;
+    setPosts(prev => prev.map(p => {
+      if (p.id !== pid) return p;
+      return { ...p, comments: [...p.comments, res] };
+    }));
   };
 
-  const doPost=(content, media)=>{
-    const pid=`p_${Date.now()}`;
-    if (media?.type==="video" && media.blobUrl) videoBlobStore[pid] = media.blobUrl;
-    const np=[{
-      id:pid, authorId:cu.id, content, timestamp:Date.now(), likes:[], comments:[],
-      media: media ? { type:media.type, thumb:media.thumb } : null,
-    },...posts];
-    setPosts(np); persist(users,np,cu); setScreen("feed");
+  const doPost = async (content, media) => {
+    const res = await api.post("/api/posts", { content, media: media ? { type:media.type, thumb:media.thumb } : null }, token);
+    if (res.error) return;
+    if (media?.type === "video" && media.blobUrl) videoBlobStore[res.id] = media.blobUrl;
+    setPosts(prev => [res, ...prev]);
+    setScreen("feed");
   };
 
-  const updateProfile=(updates)=>{
-    const newCu={...cu,...updates};
-    const newU=users.map(u=>u.id===cu.id?newCu:u);
-    setUsers(newU); setCu(newCu); persist(newU,posts,newCu);
+  const updateProfile = async (updates) => {
+    const res = await api.put(`/api/users/${cu.id}`, updates, token);
+    if (res.error) return;
+    setCu(res);
+    localStorage.setItem("ag_cu", JSON.stringify(res));
+    setUsers(prev => prev.map(u => u.id === cu.id ? res : u));
   };
 
   const goUser=(user)=>{ setProfileUid(user.id); setScreen("profile"); };
@@ -643,6 +680,12 @@ export default function Agora() {
     if(id==="myprofile"){setProfileUid(cu.id);setScreen("profile");return;}
     setScreen(id);
   };
+
+  if (loading) return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ fontFamily:T.brand, fontSize:28, color:C.textMuted }}>agora</div>
+    </div>
+  );
 
   if(!cu) return <AuthScreen onLogin={login} onSignup={signup}/>;
 
