@@ -1,0 +1,11 @@
+name = "agora"
+main = "worker/src/index.js"
+compatibility_date = "2026-04-19"
+
+[env.production]
+name = "agora-prod"
+route = "api/*"
+
+[env.staging]
+name = "agora-staging"
+route = "api-staging/*"
