@@ -23,24 +23,23 @@ const AVATAR_COLORS = [
 // PBKDF2 with 600k iterations + SHA-256 is the recommended approach in
 // Cloudflare Workers (bcrypt/scrypt native modules are not available).
 // Salt is username-scoped so each user hash is unique without a salt column.
-async function hashPw(pw, username) {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw", enc.encode(pw), "PBKDF2", false, ["deriveBits"]
-  );
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      salt: enc.encode("agora:" + username),
-      iterations: 600000,
-      hash: "SHA-256",
-    },
-    keyMaterial,
-    256
-  );
-  return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2,"0")).join("");
-}
+// ── Password hashing using scrypt-js ──
+// Scrypt is much faster than PBKDF2 and better suited for Cloudflare Workers
+import scryptJs from "scrypt-js";
 
+async function hashPw(pw, username) {
+  const salt = new TextEncoder().encode("agora:" + username);
+  const password = new TextEncoder().encode(pw);
+  
+  try {
+    // Scrypt params: N=16384 (2^14), r=8, p=1
+    const derivedKey = await scryptJs.scrypt(password, salt, 32, 16384, 8, 1);
+    return Array.from(derivedKey).map(b => b.toString(16).padStart(2, "0")).join("");
+  } catch (e) {
+    console.error("Scrypt error:", e);
+    throw new Error("Password hashing failed");
+  }
+}
 // ── Auth: read userId from Authorization header ──────────────────
 function getAuth(req) {
   // We use a simple signed token: base64(userId:timestamp:hmac)
