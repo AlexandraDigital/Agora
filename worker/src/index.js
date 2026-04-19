@@ -68,6 +68,8 @@ function cors(origin) {
     "Access-Control-Allow-Origin": origin || "*",
     "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Max-Age": "86400",
   };
 }
 
@@ -135,9 +137,15 @@ export default {
     const origin = request.headers.get("Origin");
     const db = env.DB;
 
-    // Preflight
+    // Preflight — must respond to all OPTIONS requests
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: cors(origin) });
+      return new Response(null, {
+        status: 204,
+        headers: {
+          ...cors(origin),
+          "Access-Control-Allow-Origin": origin || "*",
+        },
+      });
     }
 
     const url = new URL(request.url);
