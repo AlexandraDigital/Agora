@@ -14,40 +14,44 @@
  *   POST /api/posts/:id/comment  (auth required)
  */
 
+import bcrypt from "bcryptjs";
+
 const AVATAR_COLORS = [
   "#7b6fa0","#4a7c59","#c87941","#4a7b8a",
   "#8a4a6b","#5c7a4a","#7a5c4a","#4a5c8a",
 ];
 
-// ── Password hashing using PBKDF2 (via WebCrypto) ──
-// Reduced from 600k to 100k iterations for Cloudflare Workers (still secure, much faster)
-async function hashPw(pw, username) {
-  const salt = new TextEncoder().encode("agora:" + username);
-  const password = new TextEncoder().encode(pw);
-  const key = await crypto.subtle.importKey("raw", password, "PBKDF2", false, ["deriveBits"]);
-  const derived = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 100000 },
-    key,
-    256
-  );
-  return Array.from(new Uint8Array(derived)).map(b => b.toString(16).padStart(2, "0")).join("");
+const SALT_ROUNDS = 10;
+
+// ── Password hashing using bcrypt ─────────────────────────────────
+async function hashPw(pw) {
+  return bcrypt.hash(pw, SALT_ROUNDS);
+}
+
+async function comparePw(pw, hash) {
+  return bcrypt.compare(pw, hash);
 }
 
 // ── Auth: read userId from Authorization header ──────────────────
 function getAuth(req) {
-  // We use a simple signed token: base64(userId:timestamp:hmac)
-  // For simplicity we store a session token in the DB-less approach:
-  // The client sends "Bearer <userId>:<pw_hash>" and we verify against DB.
+  // Token format: "Bearer <userId>:<bcrypt_hash>"
+  // The bcrypt hash stored in the token is compared directly against
+  // the stored pw_hash in the DB (string equality).
   const h = req.headers.get("Authorization") || "";
   if (!h.startsWith("Bearer ")) return null;
-  return h.slice(7); // returns "userId:pw_hash"
+  return h.slice(7); // returns "userId:bcrypt_hash"
 }
 
 async function verifyAuth(req, db) {
   const token = getAuth(req);
   if (!token) return null;
-  const [userId, pwHash] = token.split(":");
+  // Split only on the first colon — bcrypt hashes contain colons ($2a$10$...)
+  const colonIdx = token.indexOf(":");
+  if (colonIdx === -1) return null;
+  const userId = token.slice(0, colonIdx);
+  const pwHash = token.slice(colonIdx + 1);
   if (!userId || !pwHash) return null;
+  // Compare stored hash with the hash embedded in the token (string equality)
   const user = await db.prepare(
     "SELECT * FROM users WHERE id = ? AND pw_hash = ?"
   ).bind(userId, pwHash).first();
@@ -164,7 +168,8 @@ export default {
       const id = `u_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
       const initials = displayName.split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase();
       const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
-      const pw_hash = await hashPw(password, username);
+      // bcrypt generates a random salt internally — no username-based salt needed
+      const pw_hash = await hashPw(password);
 
       await db.prepare(
         "INSERT INTO users (id,username,displayName,bio,pw_hash,avatar,avatarColor,joinedAt) VALUES (?,?,?,?,?,?,?,?)"
@@ -178,11 +183,14 @@ export default {
     // ── POST /api/login ─────────────────────────────────────────
     if (path === "/api/login" && method === "POST") {
       const { username, password } = await request.json();
-      const pw_hash = await hashPw(password, username);
+      // Fetch user first, then compare with bcrypt (never re-hash to verify)
       const row = await db.prepare(
-        "SELECT * FROM users WHERE username = ? AND pw_hash = ?"
-      ).bind(username, pw_hash).first();
+        "SELECT * FROM users WHERE username = ?"
+      ).bind(username).first();
       if (!row) return err("Invalid username or password", 401, origin);
+
+      const valid = await comparePw(password, row.pw_hash);
+      if (!valid) return err("Invalid username or password", 401, origin);
 
       const token = `${row.id}:${row.pw_hash}`;
       const user = await shapeUser(row, db);
