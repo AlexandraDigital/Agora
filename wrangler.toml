@@ -1,9 +1,10 @@
 name = "agora-api"
 main = "worker/src/index.js"
 compatibility_date = "2026-04-19"
+pages_build_output_dir= "dir"
 
 [[d1_databases]]
-binding = "db"
+binding = "DB"
 database_name = "agora-db"
 database_id = "6b9ceef1-9630-444b-9957-7a986e50914c"
 
