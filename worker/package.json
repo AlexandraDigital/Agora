@@ -2,9 +2,7 @@
   "name": "agora-worker",
   "version": "0.1.0",
   "private": true,
-  "dependencies": {
-    "scrypt-js": "^3.0.1"
-  },
+  "dependencies": {},
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
