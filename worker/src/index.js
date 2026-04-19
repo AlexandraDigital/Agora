@@ -19,25 +19,10 @@ const AVATAR_COLORS = [
   "#8a4a6b","#5c7a4a","#7a5c4a","#4a5c8a",
 ];
 
-// ── Password hashing using PBKDF2 (via WebCrypto) ──
-// Reduced from 600k to 100k iterations for Cloudflare Workers (still secure, much faster)
-async function hashPw(pw, username) {
-  const salt = new TextEncoder().encode("agora:" + username);
-  const password = new TextEncoder().encode(pw);
-  const key = await crypto.subtle.importKey("raw", password, "PBKDF2", false, ["deriveBits"]);
-  const derived = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 100000 },
-    key,
-    256
-  );
-  return Array.from(new Uint8Array(derived)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
 // ── Auth: read userId from Authorization header ──────────────────
 function getAuth(req) {
-  // We use a simple signed token: base64(userId:timestamp:hmac)
-  // For simplicity we store a session token in the DB-less approach:
-  // The client sends "Bearer <userId>:<pw_hash>" and we verify against DB.
+  // Token format: "Bearer <userId>:<pw_hash>"
+  // Password is pre-hashed on client using bcryptjs before sending to API
   const h = req.headers.get("Authorization") || "";
   if (!h.startsWith("Bearer ")) return null;
   return h.slice(7); // returns "userId:pw_hash"
@@ -46,7 +31,12 @@ function getAuth(req) {
 async function verifyAuth(req, db) {
   const token = getAuth(req);
   if (!token) return null;
-  const [userId, pwHash] = token.split(":");
+  // Token format: "userId:pw_hash"
+  // Split only on the first colon (bcrypt hashes can contain colons)
+  const colonIdx = token.indexOf(":");
+  if (colonIdx === -1) return null;
+  const userId = token.slice(0, colonIdx);
+  const pwHash = token.slice(colonIdx + 1);
   if (!userId || !pwHash) return null;
   const user = await db.prepare(
     "SELECT * FROM users WHERE id = ? AND pw_hash = ?"
@@ -151,8 +141,6 @@ export default {
         return err("Missing required fields", 400, origin);
       if (username.length < 3)
         return err("Username must be at least 3 characters", 400, origin);
-      if (password.length < 8)
-        return err("Password must be at least 8 characters", 400, origin);
       if (!/^[a-z0-9_]+$/.test(username))
         return err("Username can only contain letters, numbers, underscores", 400, origin);
 
@@ -164,7 +152,8 @@ export default {
       const id = `u_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
       const initials = displayName.split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase();
       const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
-      const pw_hash = await hashPw(password, username);
+      // Password is pre-hashed on client — just store it directly
+      const pw_hash = password;
 
       await db.prepare(
         "INSERT INTO users (id,username,displayName,bio,pw_hash,avatar,avatarColor,joinedAt) VALUES (?,?,?,?,?,?,?,?)"
@@ -178,7 +167,8 @@ export default {
     // ── POST /api/login ─────────────────────────────────────────
     if (path === "/api/login" && method === "POST") {
       const { username, password } = await request.json();
-      const pw_hash = await hashPw(password, username);
+      // Password is pre-hashed on client — compare directly
+      const pw_hash = password;
       const row = await db.prepare(
         "SELECT * FROM users WHERE username = ? AND pw_hash = ?"
       ).bind(username, pw_hash).first();

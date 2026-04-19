@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import * as bcrypt from "bcryptjs";
 
 const C = {
   bg: "#e6edf2",
@@ -594,7 +595,8 @@ export default function Agora() {
   }, [cu?.id]);
 
   const login = async (un, pw) => {
-    const res = await api.post("/api/login", { username: un, password: pw });
+    const pwHash = await bcrypt.hash(pw, 10);
+    const res = await api.post("/api/login", { username: un, password: pwHash });
     if (res.error) return false;
     setCu(res.user); setToken(res.token);
     localStorage.setItem("ag_token", res.token);
@@ -603,7 +605,8 @@ export default function Agora() {
   };
 
   const signup = async (un, pw, dn, bio) => {
-    const res = await api.post("/api/signup", { username:un, password:pw, displayName:dn, bio });
+    const pwHash = await bcrypt.hash(pw, 10);
+    const res = await api.post("/api/signup", { username:un, password:pwHash, displayName:dn, bio });
     if (res.error) return res.error;
     setCu(res.user); setToken(res.token);
     localStorage.setItem("ag_token", res.token);
