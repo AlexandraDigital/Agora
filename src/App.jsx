@@ -128,6 +128,37 @@ const moderateMedia = async (file) => {
 
 const inp = { width:"100%", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", fontSize:14, fontFamily:T.body, background:"#faf9f6", outline:"none", boxSizing:"border-box", color:C.text };
 
+function Toast({ message, type = "error", onClose }) {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const bgColor = type === "success" ? C.successLight : "#fdecea";
+  const textColor = type === "success" ? C.success : "#9b1c1c";
+  const borderColor = type === "success" ? "#b2d8c0" : "#f4b8b4";
+
+  return (
+    <div style={{
+      position: "fixed",
+      bottom: 100,
+      left: "50%",
+      transform: "translateX(-50%)",
+      background: bgColor,
+      color: textColor,
+      padding: "12px 20px",
+      borderRadius: 8,
+      border: `1px solid ${borderColor}`,
+      fontSize: 13,
+      fontFamily: T.body,
+      zIndex: 200,
+      animation: "fadeIn 0.3s ease-in",
+    }}>
+      {message}
+    </div>
+  );
+}
+
 function RichText({ content, onTag }) {
   const parts = content.split(/(#\w+)/g);
   return (
@@ -148,15 +179,41 @@ function Av({ user, size=36 }) {
   );
 }
 
-function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser }) {
+function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError }) {
   const author = users.find(u=>u.id===post.authorId);
   const [open, setOpen] = useState(false);
   const [ct, setCt] = useState("");
   const [showDeleteMenu, setShowDeleteMenu] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState(null);
   if (!author) return null;
   const liked = post.likes.includes(cu.id);
   const isAuthor = post.authorId === cu.id;
   const doComment = () => { if(!ct.trim()) return; onComment(post.id,ct.trim()); setCt(""); };
+  
+  const handleDeletePost = async () => {
+    setDeleting(true);
+    try {
+      await onDelete(post.id);
+      setShowDeleteMenu(false);
+    } catch (err) {
+      onError?.(err);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteComment = async (cid) => {
+    setDeletingCommentId(cid);
+    try {
+      await onDeleteComment(post.id, cid);
+    } catch (err) {
+      onError?.(err);
+    } finally {
+      setDeletingCommentId(null);
+    }
+  };
+  
   return (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, marginBottom:12, overflow:"hidden" }}>
       <div style={{ padding:"14px 16px 10px", display:"flex", gap:10, alignItems:"flex-start", justifyContent:"space-between" }}>
@@ -172,10 +229,10 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
         </div>
         {isAuthor && (
           <div style={{ position:"relative" }}>
-            <button onClick={()=>setShowDeleteMenu(!showDeleteMenu)} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:16, padding:"0 4px", lineHeight:1 }}>⋯</button>
+            <button onClick={()=>setShowDeleteMenu(!showDeleteMenu)} disabled={deleting} style={{ background:"none", border:"none", cursor:deleting?"default":"pointer", color:C.textMuted, fontSize:16, padding:"0 4px", lineHeight:1, opacity:deleting?0.5:1 }}>⋯</button>
             {showDeleteMenu && (
               <div style={{ position:"absolute", top:"100%", right:0, background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, marginTop:4, zIndex:10, minWidth:140, boxShadow:"0 2px 8px rgba(0,0,0,0.1)" }}>
-                <button onClick={()=>{onDelete(post.id);setShowDeleteMenu(false);}} style={{ width:"100%", background:"none", border:"none", cursor:"pointer", color:"#d63031", fontSize:13, padding:"10px 12px", textAlign:"left", fontFamily:T.body, borderRadius:8, transition:"background 0.2s" }} onMouseEnter={e=>e.target.style.background="#fff5f5"} onMouseLeave={e=>e.target.style.background="none"}>Delete post</button>
+                <button onClick={handleDeletePost} disabled={deleting} style={{ width:"100%", background:"none", border:"none", cursor:deleting?"default":"pointer", color:deleting?C.border:"#d63031", fontSize:13, padding:"10px 12px", textAlign:"left", fontFamily:T.body, borderRadius:8, transition:"background 0.2s" }} onMouseEnter={e=>!deleting&&(e.target.style.background="#fff5f5")} onMouseLeave={e=>!deleting&&(e.target.style.background="none")}>{deleting?"Deleting…":"Delete post"}</button>
               </div>
             )}
           </div>
@@ -239,7 +296,7 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
                   </div>
                 </div>
                 {isCommentAuthor && (
-                  <button onClick={()=>onDeleteComment(post.id, c.id)} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:12, padding:"0 4px", fontFamily:T.body }}>✕</button>
+                  <button onClick={()=>handleDeleteComment(c.id)} disabled={deletingCommentId===c.id} style={{ background:"none", border:"none", cursor:deletingCommentId===c.id?"default":"pointer", color:C.textMuted, fontSize:12, padding:"0 4px", fontFamily:T.body, opacity:deletingCommentId===c.id?0.5:1 }}>{deletingCommentId===c.id?"…":"✕"}</button>
                 )}
               </div>
             );
@@ -255,7 +312,7 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
   );
 }
 
-function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser }) {
+function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError }) {
   const feed = posts.filter(p=>cu.following.includes(p.authorId)||p.authorId===cu.id).sort((a,b)=>b.timestamp-a.timestamp);
   return (
     <div>
@@ -269,7 +326,7 @@ function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteCom
           <div style={{ fontSize:16, fontWeight:600, marginBottom:8, fontFamily:T.body }}>Your feed is empty</div>
           <div style={{ fontSize:14, color:C.textMuted, fontFamily:T.body }}>Follow people from Explore to see their posts here.</div>
         </div>
-      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser}/>)}
+      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError}/>)}
     </div>
   );
 }
@@ -339,7 +396,7 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
   );
 }
 
-function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser }) {
+function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError }) {
   const user = users.find(u=>u.id===uid);
   if (!user) return null;
   const isOwn = uid===cu.id;
@@ -372,7 +429,7 @@ function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComm
         </div>
       </div>
       {userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
-      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser}/>)}
+      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError}/>)}
     </div>
   );
 }
@@ -610,6 +667,7 @@ export default function Agora() {
   const [profileUid, setProfileUid] = useState(null);
   const [composing, setComposing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
 
   // Restore session from localStorage (token + user only — posts/users come from API)
   useEffect(() => {
@@ -693,18 +751,44 @@ export default function Agora() {
   };
 
   const deletePost = async (pid) => {
-    await api.delete(`/api/posts/${pid}`, token);
+    const originalPosts = posts;
     // Optimistic update
     setPosts(prev => prev.filter(p => p.id !== pid));
+    try {
+      const res = await api.delete(`/api/posts/${pid}`, token);
+      if (res.error) {
+        // Revert on error
+        setPosts(originalPosts);
+        setToast({ message: "Failed to delete post. Please try again.", type: "error" });
+        throw new Error(res.error);
+      }
+      setToast({ message: "Post deleted.", type: "success" });
+    } catch (err) {
+      setPosts(originalPosts);
+      setToast({ message: "Failed to delete post. Please try again.", type: "error" });
+    }
   };
 
   const deleteComment = async (pid, cid) => {
-    await api.delete(`/api/posts/${pid}/comment/${cid}`, token);
+    const originalPosts = posts;
     // Optimistic update
     setPosts(prev => prev.map(p => {
       if (p.id !== pid) return p;
       return { ...p, comments: p.comments.filter(c => c.id !== cid) };
     }));
+    try {
+      const res = await api.delete(`/api/posts/${pid}/comment/${cid}`, token);
+      if (res.error) {
+        // Revert on error
+        setPosts(originalPosts);
+        setToast({ message: "Failed to delete comment. Please try again.", type: "error" });
+        throw new Error(res.error);
+      }
+      setToast({ message: "Comment deleted.", type: "success" });
+    } catch (err) {
+      setPosts(originalPosts);
+      setToast({ message: "Failed to delete comment. Please try again.", type: "error" });
+    }
   };
 
   const doPost = async (content, media, url) => {
@@ -759,9 +843,9 @@ export default function Agora() {
       </div>
 
       <div style={{ maxWidth:600, margin:"0 auto", padding:"20px 16px 100px" }}>
-        {screen==="feed" && <FeedScreen posts={posts} users={users} cu={cu} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser}/>}
+        {screen==="feed" && <FeedScreen posts={posts} users={users} cu={cu} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})}/>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})}/>}
         {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile}/>}
       </div>
 
@@ -784,6 +868,7 @@ export default function Agora() {
       </div>
 
       {composing && <ComposeModal cu={cu} onPost={(content,media,url)=>{doPost(content,media,url);}} onClose={()=>setComposing(false)}/> }
+      {toast && <Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
     </div>
   );
 }
