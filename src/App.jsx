@@ -759,10 +759,12 @@ export default function Agora() {
         throw new Error(res.error);
       }
       setToast({ message: "Post deleted.", type: "success" });
+      return { ok: true };
     } catch (err) {
       // Revert on error
       setPosts(originalPosts);
       setToast({ message: "Failed to delete post. Please try again.", type: "error" });
+      throw err;
     }
   };
 
@@ -779,10 +781,12 @@ export default function Agora() {
         throw new Error(res.error);
       }
       setToast({ message: "Comment deleted.", type: "success" });
+      return { ok: true };
     } catch (err) {
       // Revert on error
       setPosts(originalPosts);
       setToast({ message: "Failed to delete comment. Please try again.", type: "error" });
+      throw err;
     }
   };
 
