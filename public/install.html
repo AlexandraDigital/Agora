@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1e3c5a">
+    <meta name="description" content="Install Agora - Algorithm-free social network">
+    <title>Install Agora</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 60px 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .logo {
+            margin-bottom: 40px;
+        }
+        
+        .logo svg {
+            width: 200px;
+            height: 200px;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            color: #1e3c5a;
+            margin-bottom: 20px;
+        }
+        
+        .tagline {
+            color: #666;
+            font-size: 1.1em;
+            margin-bottom: 40px;
+        }
+        
+        .install-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px 50px;
+            font-size: 1.1em;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 30px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            font-weight: 600;
+            display: none;
+        }
+        
+        .install-btn.visible {
+            display: block;
+        }
+        
+        .install-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(102, 126, 234, 0.6);
+        }
+        
+        .install-btn:active {
+            transform: translateY(0);
+        }
+        
+        .success {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            background: #e8f5e9;
+            border-radius: 8px;
+            border-left: 4px solid #4caf50;
+            color: #4caf50;
+            font-weight: 600;
+        }
+        
+        .success.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <svg viewBox="0 0 800 800">
+                <circle cx="400" cy="400" r="280" fill="#1e3c5a" />
+                <g fill="#c8aa7d">
+                    <polygon points="400,80 410,130 465,130 422,175 445,225 400,180 355,225 378,175 335,130 390,130" />
+                    <polygon points="626,156 635,205 692,205 645,250 668,300 623,255 578,300 601,250 558,205 615,205" />
+                    <polygon points="626,644 635,693 692,693 645,738 668,788 623,743 578,788 601,738 558,693 615,693" />
+                    <polygon points="400,720 410,770 465,770 422,815 445,865 400,820 355,865 378,815 335,770 390,770" />
+                    <polygon points="174,644 183,693 240,693 193,738 216,788 171,743 126,788 149,738 106,693 163,693" />
+                    <polygon points="174,156 183,205 240,205 193,250 216,300 171,255 126,300 149,250 106,205 163,205" />
+                </g>
+                <text x="400" y="450" font-size="140" font-family="serif" fill="#ffffff" text-anchor="middle">agora</text>
+            </svg>
+        </div>
+        
+        <h1>Agora</h1>
+        <p class="tagline">A public square without the algorithm</p>
+        
+        <button class="install-btn" id="installBtn">📱 Install</button>
+        
+        <div class="success" id="success">✓ Added to home screen!</div>
+    </div>
+
+    <script>
+        let deferredPrompt;
+        const installBtn = document.getElementById('installBtn');
+        const success = document.getElementById('success');
+
+        // Listen for the install prompt
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.classList.add('visible');
+        });
+
+        // Handle install button click
+        installBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                
+                if (outcome === 'accepted') {
+                    success.classList.add('show');
+                    setTimeout(() => {
+                        success.classList.remove('show');
+                    }, 3000);
+                }
+                
+                deferredPrompt = null;
+            }
+        });
+
+        // Hide button if already installed
+        window.addEventListener('appinstalled', () => {
+            installBtn.classList.remove('visible');
+        });
+    </script>
+</body>
+</html>
