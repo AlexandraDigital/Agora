@@ -1,0 +1,26 @@
+{
+  "name": "agora",
+  "short_name": "agora",
+  "description": "A public square without the algorithm",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-or-landscape",
+  "background_color": "#ffffff",
+  "theme_color": "#233545",
+  "icons": [
+    {
+      "src": "/agora_logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/agora_logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["social"]
+}
