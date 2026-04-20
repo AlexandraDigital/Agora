@@ -1,38 +1,22 @@
-// Minimal service worker for PWA installability
-const CACHE_NAME = 'agora-v1';
-const urlsToCache = ['/'];
-
+// Service Worker for Agora PWA
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(urlsToCache);
-    })
-  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
-  );
-  self.clients.claim();
+  event.waitUntil(clients.claim());
 });
 
+// Basic offline fallback
 self.addEventListener('fetch', (event) => {
+  // Let normal requests go through
   if (event.request.method !== 'GET') {
     return;
   }
+
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
+    caches.match(event.request).catch(() => {
+      return fetch(event.request);
     })
   );
 });
