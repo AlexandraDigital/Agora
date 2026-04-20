@@ -22,9 +22,8 @@ const T = {
 };
 
 // ── API config ───────────────────────────────────────────────────
-// In development: set VITE_API_URL in a .env.local file.
-// In production:  set VITE_API_URL in Cloudflare Pages environment variables.
-const API = "";
+// API endpoints are served from the same domain via Cloudflare Workers
+const API = "/api";
 
 const authHeaders = (token) => ({
   "Content-Type": "application/json",
