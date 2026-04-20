@@ -53,6 +53,8 @@ export async function shapeUser(row, db) {
     bio:         row.bio,
     avatar:      row.avatar,
     avatarColor: row.avatarColor,
+    avatarStyle: row.avatarStyle,
+    avatarImage: row.avatarImage,
     joinedAt:    row.joinedAt,
     followers:   followers.results.map(r => r.followerId),
     following:   following.results.map(r => r.followingId),
