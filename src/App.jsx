@@ -756,13 +756,11 @@ export default function Agora() {
     try {
       const res = await api.delete(`/api/posts/${pid}`, token);
       if (res.error) {
-        // Revert on error
-        setPosts(originalPosts);
-        setToast({ message: "Failed to delete post. Please try again.", type: "error" });
         throw new Error(res.error);
       }
       setToast({ message: "Post deleted.", type: "success" });
     } catch (err) {
+      // Revert on error
       setPosts(originalPosts);
       setToast({ message: "Failed to delete post. Please try again.", type: "error" });
     }
@@ -778,13 +776,11 @@ export default function Agora() {
     try {
       const res = await api.delete(`/api/posts/${pid}/comment/${cid}`, token);
       if (res.error) {
-        // Revert on error
-        setPosts(originalPosts);
-        setToast({ message: "Failed to delete comment. Please try again.", type: "error" });
         throw new Error(res.error);
       }
       setToast({ message: "Comment deleted.", type: "success" });
     } catch (err) {
+      // Revert on error
       setPosts(originalPosts);
       setToast({ message: "Failed to delete comment. Please try again.", type: "error" });
     }
