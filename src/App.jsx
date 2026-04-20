@@ -22,8 +22,6 @@ const T = {
 };
 
 // ── API config ───────────────────────────────────────────────────
-// In development: set VITE_API_URL in a .env.local file.
-// In production:  set VITE_API_URL in Cloudflare Pages environment variables.
 const API = "";
 
 const authHeaders = (token) => ({
@@ -38,6 +36,137 @@ const api = {
   delete: (path, token)     => fetch(`${API}${path}`, { method:"DELETE", headers:authHeaders(token) }).then(r=>r.json()),
 };
 
+// ──────────────────────── PWA Install Button Component ────────────────────────────
+const PWAInstallButton = () => {
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [installed, setInstalled] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowPrompt(true);
+    };
+
+    const handleAppInstalled = () => {
+      setInstalled(true);
+      setShowPrompt(false);
+      setDeferredPrompt(null);
+    };
+
+    const checkIfInstalled = async () => {
+      if (window.navigator.getInstalledRelatedApps) {
+        const relatedApps = await window.navigator.getInstalledRelatedApps();
+        if (relatedApps.length > 0) setInstalled(true);
+      }
+      if (window.navigator.standalone === true) setInstalled(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+    checkIfInstalled();
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const choiceResult = await deferredPrompt.userChoice;
+    if (choiceResult.outcome === "accepted") setShowPrompt(false);
+    setDeferredPrompt(null);
+  };
+
+  if (installed || !showPrompt) return null;
+
+  return (
+    <div style={{ background: C.accent, color: "#fff", padding: "12px 16px", borderRadius: 8, display: "flex", alignItems: "center", gap: 12, marginBottom: 12, boxShadow: "0 2px 8px rgba(74, 133, 168, 0.15)" }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, fontFamily: T.body, marginBottom: 2 }}>📱 Install Agora</div>
+        <div style={{ fontSize: 12, opacity: 0.9, fontFamily: T.body }}>Add Agora to your home screen for quick access</div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+        <button onClick={handleInstall} style={{ padding: "6px 12px", background: "#fff", color: C.accent, border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: T.body }} onMouseEnter={(e) => (e.target.style.transform = "scale(1.05)")} onMouseLeave={(e) => (e.target.style.transform = "scale(1)")}>Install</button>
+        <button onClick={() => setShowPrompt(false)} style={{ padding: "6px 8px", background: "rgba(255, 255, 255, 0.2)", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", fontFamily: T.body }}>Later</button>
+      </div>
+    </div>
+  );
+};
+
+// ──────────────────────── Avatar Editor Component ────────────────────────────
+const AvatarEditor = ({ user, onSave, onCancel }) => {
+  const [preview, setPreview] = useState(user?.avatar || null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Image must be less than 2MB");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = (event) => setPreview(event.target.result);
+      reader.readAsDataURL(file);
+    } catch (err) {
+      alert("Error uploading image: " + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setUploading(true);
+    try {
+      await onSave({ avatar: preview });
+    } catch (err) {
+      alert("Error saving avatar: " + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 16 }}>
+      <h2 style={{ fontFamily: T.brand, fontSize: 20, color: C.text, margin: "0 0 16px 0" }}>Edit Avatar</h2>
+      
+      <div style={{ marginBottom: 20, textAlign: "center" }}>
+        <div style={{ width: 120, height: 120, borderRadius: "50%", background: preview ? "transparent" : C.accentLight, backgroundImage: preview ? `url(${preview})` : "none", backgroundSize: "cover", backgroundPosition: "center", border: `3px solid ${C.accent}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 48, color: C.textMuted, marginBottom: 12 }}>
+          {!preview && "👤"}
+        </div>
+        <p style={{ color: C.textMuted, fontSize: 12, margin: 0 }}>Max 2MB • JPEG, PNG, GIF, WebP</p>
+      </div>
+
+      <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ width: "100%", padding: "10px 16px", marginBottom: 12, background: C.accent, color: "#fff", border: "none", borderRadius: 8, cursor: uploading ? "not-allowed" : "pointer", fontSize: 14, fontFamily: T.body, opacity: uploading ? 0.7 : 1 }}>
+        {uploading ? "Uploading..." : "Choose Image"}
+      </button>
+
+      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{ display: "none" }} />
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={handleSave} disabled={uploading || !preview} style={{ flex: 1, padding: "10px 16px", background: preview ? C.success : C.border, color: preview ? "#fff" : C.textMuted, border: "none", borderRadius: 8, cursor: uploading || !preview ? "not-allowed" : "pointer", fontSize: 14, fontFamily: T.body }}>
+          Save Avatar
+        </button>
+        <button onClick={onCancel} disabled={uploading} style={{ flex: 1, padding: "10px 16px", background: "transparent", color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, cursor: uploading ? "not-allowed" : "pointer", fontSize: 14, fontFamily: T.body }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const fmtTime = (ts) => {
   const d = Date.now() - ts;
   if (d < 60000) return "just now";
@@ -47,7 +176,7 @@ const fmtTime = (ts) => {
   return new Date(ts).toLocaleDateString("en-US", { month:"short", day:"numeric" });
 };
 
-const parseTags = (t) => [...new Set((t.match(/#\w+/g)||[]).map(x=>x.toLowerCase()))];
+const parseTags = (t) => [...new Set((t.match(/#\\w+/g)||[]).map(x=>x.toLowerCase()))];
 
 const videoBlobStore = {};
 
@@ -81,19 +210,17 @@ const extractFrame = (blobUrl) => new Promise(resolve => {
   v.onerror = () => resolve(null);
 });
 
-// Allowed MIME types and their magic-byte signatures (hex, checked at the start of the file)
 const ALLOWED_TYPES = {
   "image/jpeg":  { sig: [[0xFF,0xD8,0xFF]], ext: ["jpg","jpeg"] },
   "image/png":   { sig: [[0x89,0x50,0x4E,0x47]], ext: ["png"] },
   "image/gif":   { sig: [[0x47,0x49,0x46,0x38]], ext: ["gif"] },
-  "image/webp":  { sig: null, ext: ["webp"] }, // RIFF container — skip magic check
+  "image/webp":  { sig: null, ext: ["webp"] },
   "video/mp4":   { sig: null, ext: ["mp4","m4v"] },
   "video/webm":  { sig: [[0x1A,0x45,0xDF,0xA3]], ext: ["webm"] },
   "video/ogg":   { sig: [[0x4F,0x67,0x67,0x53]], ext: ["ogv","ogg"] },
   "video/quicktime": { sig: null, ext: ["mov"] },
 };
 
-// Read the first N bytes of a File as a Uint8Array
 const readHeader = (file, n=12) => new Promise(resolve => {
   const r = new FileReader();
   r.onload = e => resolve(new Uint8Array(e.target.result));
@@ -101,27 +228,20 @@ const readHeader = (file, n=12) => new Promise(resolve => {
   r.readAsArrayBuffer(file.slice(0, n));
 });
 
-// Check if bytes start with any of the given signatures
 const matchesSig = (bytes, sigs) =>
   sigs.some(sig => sig.every((b, i) => bytes[i] === b));
 
 const moderateMedia = async (file) => {
   try {
-    // 1. MIME type must be in the allowlist
     const meta = ALLOWED_TYPES[file.type];
     if (!meta) return { ok: false, reason: `File type "${file.type}" is not allowed. Upload JPEG, PNG, GIF, WebP, MP4, WebM, or MOV.` };
-
-    // 2. Extension must match the declared MIME type
     const ext = file.name.split(".").pop().toLowerCase();
     if (!meta.ext.includes(ext)) return { ok: false, reason: `File extension ".${ext}" doesn't match its declared type. Please re-save and try again.` };
-
-    // 3. Magic-byte check (where applicable)
     if (meta.sig) {
       const header = await readHeader(file);
       if (!header) return { ok: false, reason: "Could not read the file. Try another." };
       if (!matchesSig(header, meta.sig)) return { ok: false, reason: "File header doesn't match its declared format. The file may be corrupted or mislabeled." };
     }
-
     return { ok: true, reason: "" };
   } catch { return { ok: false, reason: "File check failed — please try again." }; }
 };
@@ -139,28 +259,14 @@ function Toast({ message, type = "error", onClose }) {
   const borderColor = type === "success" ? "#b2d8c0" : "#f4b8b4";
 
   return (
-    <div style={{
-      position: "fixed",
-      bottom: 100,
-      left: "50%",
-      transform: "translateX(-50%)",
-      background: bgColor,
-      color: textColor,
-      padding: "12px 20px",
-      borderRadius: 8,
-      border: `1px solid ${borderColor}`,
-      fontSize: 13,
-      fontFamily: T.body,
-      zIndex: 200,
-      animation: "fadeIn 0.3s ease-in",
-    }}>
+    <div style={{ position: "fixed", bottom: 100, left: "50%", transform: "translateX(-50%)", background: bgColor, color: textColor, padding: "12px 20px", borderRadius: 8, border: `1px solid ${borderColor}`, fontSize: 13, fontFamily: T.body, zIndex: 200, animation: "fadeIn 0.3s ease-in" }}>
       {message}
     </div>
   );
 }
 
 function RichText({ content, onTag }) {
-  const parts = content.split(/(#\w+)/g);
+  const parts = content.split(/(#\\w+)/g);
   return (
     <span>
       {parts.map((p, i) => p.startsWith("#")
@@ -173,8 +279,8 @@ function RichText({ content, onTag }) {
 
 function Av({ user, size=36 }) {
   return (
-    <div style={{ width:size, height:size, borderRadius:"50%", background:user.avatarColor||"#888", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:size*0.34, fontWeight:700, flexShrink:0, fontFamily:T.body }}>
-      {user.avatar}
+    <div style={{ width:size, height:size, borderRadius:"50%", background:user.avatarColor||"#888", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:size*0.34, fontWeight:700, flexShrink:0, fontFamily:T.body, backgroundImage: user.avatar ? `url(${user.avatar})` : "none", backgroundSize: "cover", backgroundPosition: "center" }}>
+      {!user.avatar && user.avatar}
     </div>
   );
 }
@@ -316,6 +422,7 @@ function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteCom
   const feed = posts.filter(p=>cu.following.includes(p.authorId)||p.authorId===cu.id).sort((a,b)=>b.timestamp-a.timestamp);
   return (
     <div>
+      <PWAInstallButton />
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
         <span style={{ fontSize:12, color:C.textMuted, fontFamily:T.mono }}>↓ newest first · no algorithm</span>
         <span style={{ fontSize:12, color:C.textMuted }}>{feed.length} post{feed.length!==1?"s":""}</span>
@@ -438,6 +545,7 @@ function SettingsScreen({ cu, onLogout, onBack, onUpdate }) {
   const [dn, setDn] = useState(cu.displayName);
   const [bio, setBio] = useState(cu.bio||"");
   const [saved, setSaved] = useState(false);
+  const [editingAvatar, setEditingAvatar] = useState(false);
   const save = () => { onUpdate({ displayName:dn, bio }); setSaved(true); setTimeout(()=>setSaved(false),2000); };
   const privacyItems = [
     ["No data collection","We collect zero analytics or usage data"],
@@ -446,14 +554,37 @@ function SettingsScreen({ cu, onLogout, onBack, onUpdate }) {
     ["No AI sorting","No AI recommendations, no engagement ranking"],
     ["Browser-local only","All data lives in your browser, not remote servers"],
   ];
+  
+  const handleAvatarSave = async (updates) => {
+    onUpdate(updates);
+    setEditingAvatar(false);
+    setSaved(true);
+    setTimeout(()=>setSaved(false),2000);
+  };
+
   return (
     <div>
       <button onClick={onBack} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:14, padding:"0 0 16px", fontFamily:T.body }}>← back</button>
+      
+      {editingAvatar ? (
+        <AvatarEditor user={cu} onSave={handleAvatarSave} onCancel={() => setEditingAvatar(false)} />
+      ) : (
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
+          <div style={{ fontWeight:600, fontSize:16, marginBottom:16, fontFamily:T.body }}>Profile Picture</div>
+          <div style={{ display:"flex", alignItems:"center", gap:20, marginBottom:16 }}>
+            <Av user={cu} size={80}/>
+            <button onClick={() => setEditingAvatar(true)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:8, padding:"10px 20px", fontSize:14, cursor:"pointer", fontFamily:T.body }}>
+              Change Avatar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
         <div style={{ fontWeight:600, fontSize:16, marginBottom:16, fontFamily:T.body }}>Edit profile</div>
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
           <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Display name</label><input value={dn} onChange={e=>setDn(e.target.value)} style={inp}/></div>
-          <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Bio</label><input value={bio} onChange={e=>setBio(e.target.value)} style={inp}/></div>
+          <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Bio (280 characters)</label><textarea value={bio} onChange={e=>setBio(e.target.value.slice(0,280))} style={{...inp, minHeight:"80px", resize:"vertical"}} maxLength="280"/><div style={{fontSize:12, color:C.textMuted, marginTop:5}}>{bio.length}/280</div></div>
           <button onClick={save} style={{ background:saved?C.success:C.text, color:"#fff", border:"none", borderRadius:8, padding:"10px 0", fontSize:14, cursor:"pointer", fontFamily:T.body }}>{saved?"✓ Saved":"Save changes"}</button>
         </div>
       </div>
@@ -480,7 +611,7 @@ function ComposeModal({ cu, onPost, onClose }) {
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
   const [file, setFile] = useState(null);
-  const [modStatus, setModStatus] = useState(null); // null | 'scanning' | 'ok' | 'rejected' | 'error'
+  const [modStatus, setModStatus] = useState(null);
   const [modReason, setModReason] = useState("");
   const fileRef = useRef(null);
   const MAX = 500;
@@ -659,8 +790,8 @@ function AuthScreen({ onLogin, onSignup }) {
 }
 
 export default function Agora() {
-  const [cu, setCu] = useState(null);         // current user object
-  const [token, setToken] = useState(null);   // auth token
+  const [cu, setCu] = useState(null);
+  const [token, setToken] = useState(null);
   const [users, setUsers] = useState([]);
   const [posts, setPosts] = useState([]);
   const [screen, setScreen] = useState("feed");
@@ -669,7 +800,6 @@ export default function Agora() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
-  // Restore session from localStorage (token + user only — posts/users come from API)
   useEffect(() => {
     const savedToken = localStorage.getItem("ag_token");
     const savedUser  = localStorage.getItem("ag_cu");
@@ -678,9 +808,17 @@ export default function Agora() {
       setCu(JSON.parse(savedUser));
     }
     setLoading(false);
+    
+    // Register service worker for PWA
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").then((registration) => {
+        console.log("Service Worker registered:", registration);
+      }).catch((err) => {
+        console.log("Service Worker registration failed:", err);
+      });
+    }
   }, []);
 
-  // Fetch users + posts whenever we have a session
   useEffect(() => {
     if (!cu || !token) return;
     const load = async () => {
@@ -720,7 +858,6 @@ export default function Agora() {
 
   const follow = async (uid) => {
     await api.post(`/api/follow/${uid}`, {}, token);
-    // Optimistic update
     const isFollowing = cu.following.includes(uid);
     const newCu = { ...cu, following: isFollowing ? cu.following.filter(id=>id!==uid) : [...cu.following, uid] };
     setCu(newCu);
@@ -733,7 +870,6 @@ export default function Agora() {
 
   const like = async (pid) => {
     await api.post(`/api/posts/${pid}/like`, {}, token);
-    // Optimistic update
     setPosts(prev => prev.map(p => {
       if (p.id !== pid) return p;
       const liked = p.likes.includes(cu.id);
@@ -752,12 +888,10 @@ export default function Agora() {
 
   const deletePost = async (pid) => {
     const originalPosts = posts;
-    // Optimistic update
     setPosts(prev => prev.filter(p => p.id !== pid));
     try {
       const res = await api.delete(`/api/posts/${pid}`, token);
       if (res.error) {
-        // Revert on error
         setPosts(originalPosts);
         setToast({ message: "Failed to delete post. Please try again.", type: "error" });
         throw new Error(res.error);
@@ -771,7 +905,6 @@ export default function Agora() {
 
   const deleteComment = async (pid, cid) => {
     const originalPosts = posts;
-    // Optimistic update
     setPosts(prev => prev.map(p => {
       if (p.id !== pid) return p;
       return { ...p, comments: p.comments.filter(c => c.id !== cid) };
@@ -779,7 +912,6 @@ export default function Agora() {
     try {
       const res = await api.delete(`/api/posts/${pid}/comment/${cid}`, token);
       if (res.error) {
-        // Revert on error
         setPosts(originalPosts);
         setToast({ message: "Failed to delete comment. Please try again.", type: "error" });
         throw new Error(res.error);
