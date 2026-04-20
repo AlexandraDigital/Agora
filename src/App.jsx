@@ -35,6 +35,7 @@ const api = {
   post: (path, body, token) => fetch(`${API}${path}`, { method:"POST", headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
   put:  (path, body, token) => fetch(`${API}${path}`, { method:"PUT",  headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
   get:  (path, token)       => fetch(`${API}${path}`, { headers:authHeaders(token) }).then(r=>r.json()),
+  delete: (path, token)     => fetch(`${API}${path}`, { method:"DELETE", headers:authHeaders(token) }).then(r=>r.json()),
 };
 
 const fmtTime = (ts) => {
@@ -147,24 +148,38 @@ function Av({ user, size=36 }) {
   );
 }
 
-function PostCard({ post, users, cu, onLike, onComment, onUser }) {
+function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser }) {
   const author = users.find(u=>u.id===post.authorId);
   const [open, setOpen] = useState(false);
   const [ct, setCt] = useState("");
+  const [showDeleteMenu, setShowDeleteMenu] = useState(false);
   if (!author) return null;
   const liked = post.likes.includes(cu.id);
+  const isAuthor = post.authorId === cu.id;
   const doComment = () => { if(!ct.trim()) return; onComment(post.id,ct.trim()); setCt(""); };
   return (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, marginBottom:12, overflow:"hidden" }}>
-      <div style={{ padding:"14px 16px 10px", display:"flex", gap:10, alignItems:"flex-start" }}>
-        <div style={{ cursor:"pointer" }} onClick={()=>onUser(author)}><Av user={author} size={38}/></div>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ display:"flex", alignItems:"baseline", gap:6, flexWrap:"wrap" }}>
-            <span style={{ fontWeight:600, fontSize:14, cursor:"pointer", fontFamily:T.body }} onClick={()=>onUser(author)}>{author.displayName}</span>
-            <span style={{ color:C.textMuted, fontSize:12 }}>@{author.username}</span>
+      <div style={{ padding:"14px 16px 10px", display:"flex", gap:10, alignItems:"flex-start", justifyContent:"space-between" }}>
+        <div style={{ display:"flex", gap:10, alignItems:"flex-start", flex:1, minWidth:0 }}>
+          <div style={{ cursor:"pointer" }} onClick={()=>onUser(author)}><Av user={author} size={38}/></div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ display:"flex", alignItems:"baseline", gap:6, flexWrap:"wrap" }}>
+              <span style={{ fontWeight:600, fontSize:14, cursor:"pointer", fontFamily:T.body }} onClick={()=>onUser(author)}>{author.displayName}</span>
+              <span style={{ color:C.textMuted, fontSize:12 }}>@{author.username}</span>
+            </div>
+            <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>{fmtTime(post.timestamp)}</div>
           </div>
-          <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>{fmtTime(post.timestamp)}</div>
         </div>
+        {isAuthor && (
+          <div style={{ position:"relative" }}>
+            <button onClick={()=>setShowDeleteMenu(!showDeleteMenu)} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:16, padding:"0 4px", lineHeight:1 }}>⋯</button>
+            {showDeleteMenu && (
+              <div style={{ position:"absolute", top:"100%", right:0, background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, marginTop:4, zIndex:10, minWidth:140, boxShadow:"0 2px 8px rgba(0,0,0,0.1)" }}>
+                <button onClick={()=>{onDelete(post.id);setShowDeleteMenu(false);}} style={{ width:"100%", background:"none", border:"none", cursor:"pointer", color:"#d63031", fontSize:13, padding:"10px 12px", textAlign:"left", fontFamily:T.body, borderRadius:8, transition:"background 0.2s" }} onMouseEnter={e=>e.target.style.background="#fff5f5"} onMouseLeave={e=>e.target.style.background="none"}>Delete post</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div style={{ padding:"0 16px 14px", fontSize:15, lineHeight:1.65, whiteSpace:"pre-wrap", fontFamily:T.body, color:C.text }}>
         <RichText content={post.content} />
@@ -212,14 +227,20 @@ function PostCard({ post, users, cu, onLike, onComment, onUser }) {
           {post.comments.map(c => {
             const cm = users.find(u=>u.id===c.authorId);
             if (!cm) return null;
+            const isCommentAuthor = c.authorId === cu.id;
             return (
-              <div key={c.id} style={{ padding:"10px 16px", display:"flex", gap:10, borderBottom:`1px solid ${C.border}` }}>
-                <Av user={cm} size={26}/>
-                <div style={{ flex:1 }}>
-                  <span style={{ fontWeight:600, fontSize:13, fontFamily:T.body }}>{cm.displayName} </span>
-                  <span style={{ fontSize:13, fontFamily:T.body, color:C.text }}>{c.text}</span>
-                  <div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>{fmtTime(c.timestamp)}</div>
+              <div key={c.id} style={{ padding:"10px 16px", display:"flex", gap:10, borderBottom:`1px solid ${C.border}`, alignItems:"flex-start", justifyContent:"space-between" }}>
+                <div style={{ display:"flex", gap:10, flex:1, minWidth:0 }}>
+                  <Av user={cm} size={26}/>
+                  <div style={{ flex:1 }}>
+                    <span style={{ fontWeight:600, fontSize:13, fontFamily:T.body }}>{cm.displayName} </span>
+                    <span style={{ fontSize:13, fontFamily:T.body, color:C.text }}>{c.text}</span>
+                    <div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>{fmtTime(c.timestamp)}</div>
+                  </div>
                 </div>
+                {isCommentAuthor && (
+                  <button onClick={()=>onDeleteComment(post.id, c.id)} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:12, padding:"0 4px", fontFamily:T.body }}>✕</button>
+                )}
               </div>
             );
           })}
@@ -234,7 +255,7 @@ function PostCard({ post, users, cu, onLike, onComment, onUser }) {
   );
 }
 
-function FeedScreen({ posts, users, cu, onLike, onComment, onUser }) {
+function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser }) {
   const feed = posts.filter(p=>cu.following.includes(p.authorId)||p.authorId===cu.id).sort((a,b)=>b.timestamp-a.timestamp);
   return (
     <div>
@@ -248,7 +269,7 @@ function FeedScreen({ posts, users, cu, onLike, onComment, onUser }) {
           <div style={{ fontSize:16, fontWeight:600, marginBottom:8, fontFamily:T.body }}>Your feed is empty</div>
           <div style={{ fontSize:14, color:C.textMuted, fontFamily:T.body }}>Follow people from Explore to see their posts here.</div>
         </div>
-      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onUser={onUser}/>)}
+      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser}/>)}
     </div>
   );
 }
@@ -298,7 +319,7 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
                 <span style={{ fontSize:20, fontWeight:700, fontFamily:T.brand, color:C.accent }}>{selTag}</span>
                 <button onClick={()=>setSelTag(null)} style={{ background:C.border, border:"none", borderRadius:20, padding:"3px 10px", fontSize:11, cursor:"pointer", color:C.textMuted, fontFamily:T.body }}>✕ clear</button>
               </div>
-              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={()=>{}} onComment={()=>{}} onUser={onUser}/>)}
+              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={()=>{}} onComment={()=>{}} onDelete={()=>{}} onDeleteComment={()=>{}} onUser={onUser}/>)}
               <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:16, marginTop:8 }}>
                 <div style={{ fontSize:12, color:C.textMuted, marginBottom:12, fontFamily:T.body }}>All tags</div>
               </div>
@@ -318,7 +339,7 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
   );
 }
 
-function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComment, onUser }) {
+function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser }) {
   const user = users.find(u=>u.id===uid);
   if (!user) return null;
   const isOwn = uid===cu.id;
@@ -351,7 +372,7 @@ function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComm
         </div>
       </div>
       {userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
-      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onUser={onUser}/>)}
+      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser}/>)}
     </div>
   );
 }
@@ -671,6 +692,21 @@ export default function Agora() {
     }));
   };
 
+  const deletePost = async (pid) => {
+    await api.delete(`/api/posts/${pid}`, token);
+    // Optimistic update
+    setPosts(prev => prev.filter(p => p.id !== pid));
+  };
+
+  const deleteComment = async (pid, cid) => {
+    await api.delete(`/api/posts/${pid}/comment/${cid}`, token);
+    // Optimistic update
+    setPosts(prev => prev.map(p => {
+      if (p.id !== pid) return p;
+      return { ...p, comments: p.comments.filter(c => c.id !== cid) };
+    }));
+  };
+
   const doPost = async (content, media, url) => {
     const res = await api.post("/api/posts", { content, media: media ? { type:media.type, thumb:media.thumb } : null, url: url||null }, token);
     if (res.error) return;
@@ -723,9 +759,9 @@ export default function Agora() {
       </div>
 
       <div style={{ maxWidth:600, margin:"0 auto", padding:"20px 16px 100px" }}>
-        {screen==="feed" && <FeedScreen posts={posts} users={users} cu={cu} onLike={like} onComment={comment} onUser={goUser}/>}
+        {screen==="feed" && <FeedScreen posts={posts} users={users} cu={cu} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser}/>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onUser={goUser}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser}/>}
         {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile}/>}
       </div>
 
