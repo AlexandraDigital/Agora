@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#1e3c5a">
     <meta name="description" content="Install Agora - Algorithm-free social network">
     <link rel="manifest" href="/manifest.json">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><circle cx='256' cy='256' r='224' fill='%231e3c5a'/><g fill='%23c8aa7d'><polygon points='256,64 268,144 346,144 286,200 318,280 256,224 194,280 226,200 166,144 244,144'/></g><text x='256' y='350' font-size='120' font-family='serif' fill='white' text-anchor='middle'>agora</text></svg>">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <title>Install Agora</title>
     <style>
         * {
@@ -39,9 +39,10 @@
             margin-bottom: 40px;
         }
         
-        .logo svg {
+        .logo img {
             width: 200px;
             height: 200px;
+            object-fit: contain;
             filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
         }
         
@@ -49,12 +50,14 @@
             font-size: 2.5em;
             color: #1e3c5a;
             margin-bottom: 20px;
+            font-weight: 700;
         }
         
         .tagline {
             color: #666;
             font-size: 1.1em;
             margin-bottom: 40px;
+            line-height: 1.6;
         }
         
         .install-btn {
@@ -88,12 +91,13 @@
         .success {
             display: none;
             margin-top: 20px;
-            padding: 15px;
+            padding: 15px 20px;
             background: #e8f5e9;
             border-radius: 8px;
             border-left: 4px solid #4caf50;
-            color: #4caf50;
+            color: #2e7d32;
             font-weight: 600;
+            font-size: 1em;
         }
         
         .success.show {
@@ -116,26 +120,15 @@
 <body>
     <div class="container">
         <div class="logo">
-            <svg viewBox="0 0 800 800">
-                <circle cx="400" cy="400" r="280" fill="#1e3c5a" />
-                <g fill="#c8aa7d">
-                    <polygon points="400,80 410,130 465,130 422,175 445,225 400,180 355,225 378,175 335,130 390,130" />
-                    <polygon points="626,156 635,205 692,205 645,250 668,300 623,255 578,300 601,250 558,205 615,205" />
-                    <polygon points="626,644 635,693 692,693 645,738 668,788 623,743 578,788 601,738 558,693 615,693" />
-                    <polygon points="400,720 410,770 465,770 422,815 445,865 400,820 355,865 378,815 335,770 390,770" />
-                    <polygon points="174,644 183,693 240,693 193,738 216,788 171,743 126,788 149,738 106,693 163,693" />
-                    <polygon points="174,156 183,205 240,205 193,250 216,300 171,255 126,300 149,250 106,205 163,205" />
-                </g>
-                <text x="400" y="450" font-size="140" font-family="serif" fill="#ffffff" text-anchor="middle">agora</text>
-            </svg>
+            <img src="/agora_logo.png" alt="Agora Logo">
         </div>
         
         <h1>Agora</h1>
         <p class="tagline">A public square without the algorithm</p>
         
-        <button class="install-btn" id="installBtn">📱 Install</button>
+        <button class="install-btn" id="installBtn">📱 Install to Home Screen</button>
         
-        <div class="success" id="success">✓ Added to home screen!</div>
+        <div class="success" id="success">✓ App installed successfully!</div>
     </div>
 
     <script>
@@ -167,7 +160,7 @@
                     success.classList.add('show');
                     setTimeout(() => {
                         success.classList.remove('show');
-                    }, 3000);
+                    }, 4000);
                 }
                 
                 deferredPrompt = null;
