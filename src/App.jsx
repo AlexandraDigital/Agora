@@ -610,7 +610,11 @@ function AuthScreen({ onLogin, onSignup }) {
     setErr(""); setBusy(true);
     if (mode==="login") {
       const ok = await onLogin(un, pw);
-      if (!ok) setErr("Username or password incorrect.");
+      if (!ok) {
+        setErr("Username or password incorrect.");
+        setBusy(false);
+        return;
+      }
     } else {
       if(!un||!pw||!dn){ setErr("Please fill in all required fields."); setBusy(false); return; }
       if(un.length<3){ setErr("Username must be at least 3 characters."); setBusy(false); return; }
