@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#1e3c5a">
     <meta name="description" content="Install Agora - Algorithm-free social network">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><circle cx='256' cy='256' r='224' fill='%231e3c5a'/><g fill='%23c8aa7d'><polygon points='256,64 268,144 346,144 286,200 318,280 256,224 194,280 226,200 166,144 244,144'/></g><text x='256' y='350' font-size='120' font-family='serif' fill='white' text-anchor='middle'>agora</text></svg>">
     <title>Install Agora</title>
     <style>
         * {
@@ -137,6 +139,13 @@
     </div>
 
     <script>
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(err => {
+                console.log('Service worker registration failed:', err);
+            });
+        }
+
         let deferredPrompt;
         const installBtn = document.getElementById('installBtn');
         const success = document.getElementById('success');
