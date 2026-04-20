@@ -169,6 +169,16 @@ function PostCard({ post, users, cu, onLike, onComment, onUser }) {
       <div style={{ padding:"0 16px 14px", fontSize:15, lineHeight:1.65, whiteSpace:"pre-wrap", fontFamily:T.body, color:C.text }}>
         <RichText content={post.content} />
       </div>
+      {post.url && (
+        <div style={{ margin:"0 16px 14px" }}>
+          <a href={post.url.startsWith("http")?post.url:`https://${post.url}`} target="_blank" rel="noopener noreferrer"
+            style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 13px", background:C.accentLight, border:`1px solid ${C.border}`, borderRadius:10, textDecoration:"none", color:C.accent, fontSize:13, fontFamily:T.body, wordBreak:"break-all" }}>
+            <span style={{ flexShrink:0 }}>🔗</span>
+            <span style={{ flex:1 }}>{post.url}</span>
+            <span style={{ flexShrink:0, fontSize:11, color:C.textMuted }}>↗</span>
+          </a>
+        </div>
+      )}
       {post.media && (
         <div style={{ marginBottom:2, overflow:"hidden" }}>
           {post.media.type==="image" ? (
@@ -390,6 +400,7 @@ function SettingsScreen({ cu, onLogout, onBack, onUpdate }) {
 
 function ComposeModal({ cu, onPost, onClose }) {
   const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
   const [file, setFile] = useState(null);
   const [modStatus, setModStatus] = useState(null); // null | 'scanning' | 'ok' | 'rejected' | 'error'
   const [modReason, setModReason] = useState("");
@@ -430,7 +441,7 @@ function ComposeModal({ cu, onPost, onClose }) {
 
   const doPost = () => {
     if (!canPost) return;
-    onPost(text.trim(), file ? { type: file.type, thumb: file.thumb, blobUrl: file.blobUrl } : null);
+    onPost(text.trim(), file ? { type: file.type, thumb: file.thumb, blobUrl: file.blobUrl } : null, url.trim());
     onClose();
   };
 
@@ -447,6 +458,17 @@ function ComposeModal({ cu, onPost, onClose }) {
             <textarea value={text} onChange={e=>setText(e.target.value.slice(0,MAX))} placeholder="What's on your mind?" autoFocus style={{ width:"100%", border:"none", outline:"none", fontSize:16, fontFamily:T.body, resize:"none", minHeight:100, lineHeight:1.65, background:"transparent", boxSizing:"border-box", color:C.text }}/>
             {parseTags(text).length>0 && <div style={{ fontSize:12, color:C.accent, marginTop:2, fontFamily:T.mono }}>{parseTags(text).join(" ")}</div>}
             <div style={{ fontSize:11, color:text.length>MAX*0.9?"#b01e1e":C.textMuted, textAlign:"right", marginTop:3 }}>{text.length}/{MAX}</div>
+            <div style={{ marginTop:10 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:7, border:`1px solid ${C.border}`, borderRadius:8, padding:"7px 11px", background:"#faf9f6" }}>
+                <span style={{ fontSize:15, color:C.textMuted, flexShrink:0 }}>🔗</span>
+                <input
+                  value={url}
+                  onChange={e=>setUrl(e.target.value)}
+                  placeholder="Add a link (optional)"
+                  style={{ flex:1, border:"none", outline:"none", fontSize:13, fontFamily:T.body, background:"transparent", color:C.text }}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -649,8 +671,8 @@ export default function Agora() {
     }));
   };
 
-  const doPost = async (content, media) => {
-    const res = await api.post("/api/posts", { content, media: media ? { type:media.type, thumb:media.thumb } : null }, token);
+  const doPost = async (content, media, url) => {
+    const res = await api.post("/api/posts", { content, media: media ? { type:media.type, thumb:media.thumb } : null, url: url||null }, token);
     if (res.error) return;
     if (media?.type === "video" && media.blobUrl) videoBlobStore[res.id] = media.blobUrl;
     setPosts(prev => [res, ...prev]);
@@ -725,7 +747,7 @@ export default function Agora() {
         })}
       </div>
 
-      {composing && <ComposeModal cu={cu} onPost={(content,media)=>{doPost(content,media);}} onClose={()=>setComposing(false)}/> }
+      {composing && <ComposeModal cu={cu} onPost={(content,media,url)=>{doPost(content,media,url);}} onClose={()=>setComposing(false)}/> }
     </div>
   );
 }
