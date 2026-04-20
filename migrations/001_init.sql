@@ -1,4 +1,4 @@
--- Initialize D1 database for Agora
+-- Initialize Agora database schema
 
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,8 +25,3 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
--- Create indexes for faster queries
-CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
