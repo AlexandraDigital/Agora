@@ -548,7 +548,7 @@ function AuthScreen({ onLogin, onSignup }) {
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
       <div style={{ width:"100%", maxWidth:420 }}>
         <div style={{ textAlign:"center", marginBottom:36 }}>
-          <div style={{ fontFamily:T.brand, fontSize:42, fontWeight:700, color:C.text, letterSpacing:-1 }}>agora</div>
+          <img src="/agora_logo.png" alt="agora" style={{ height:60, marginBottom:12, display:"inline-block" }}/>
           <div style={{ fontSize:13, color:C.textMuted, marginTop:5, fontFamily:T.body, letterSpacing:0.3 }}>a public square without the algorithm</div>
         </div>
         <div style={{ display:"flex", gap:6, justifyContent:"center", marginBottom:28, flexWrap:"wrap" }}>
@@ -589,6 +589,8 @@ export default function Agora() {
   const [profileUid, setProfileUid] = useState(null);
   const [composing, setComposing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [installable, setInstallable] = useState(false);
 
   // Restore session from localStorage (token + user only — posts/users come from API)
   useEffect(() => {
@@ -600,6 +602,28 @@ export default function Agora() {
     }
     setLoading(false);
   }, []);
+
+  // Listen for beforeinstallprompt
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setInstallable(true);
+    };
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstall = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+        setInstallable(false);
+      }
+    }
+  };
 
   // Fetch users + posts whenever we have a session
   useEffect(() => {
@@ -705,7 +729,7 @@ export default function Agora() {
 
   if (loading) return (
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ fontFamily:T.brand, fontSize:28, color:C.textMuted }}>agora</div>
+      <img src="/agora_logo.png" alt="agora" style={{ height:50 }}/>
     </div>
   );
 
@@ -714,8 +738,15 @@ export default function Agora() {
   return (
     <div style={{ minHeight:"100vh", background:C.bg }}>
       <div style={{ position:"sticky", top:0, zIndex:50, background:C.dark, padding:"12px 20px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <div style={{ fontFamily:T.brand, fontSize:24, fontWeight:700, color:C.darkText, letterSpacing:-0.5 }}>agora</div>
-        <div style={{ display:"flex", gap:5, flexWrap:"wrap", justifyContent:"flex-end" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <img src="/agora_logo.png" alt="agora" style={{ height:28 }}/>
+        </div>
+        <div style={{ display:"flex", gap:5, flexWrap:"wrap", justifyContent:"flex-end", alignItems:"center" }}>
+          {installable && (
+            <button onClick={handleInstall} style={{ background:"none", border:"none", cursor:"pointer", padding:"0 8px", height:28, display:"flex", alignItems:"center" }}>
+              <img src="/agora_install_button.png" alt="Install" style={{ height:"100%", objectFit:"contain" }}/>
+            </button>
+          )}
           {["chronological","no algorithm","no tracking"].map(b=>(
             <span key={b} style={{ fontSize:9, padding:"2px 8px", borderRadius:10, border:"1px solid rgba(255,255,255,0.2)", color:"rgba(255,255,255,0.6)", fontFamily:T.mono }}>{b}</span>
           ))}
