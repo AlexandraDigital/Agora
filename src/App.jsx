@@ -171,10 +171,228 @@ function RichText({ content, onTag }) {
   );
 }
 
-function Av({ user, size=36 }) {
+function AvatarCustomizer({ user, onSave, onCancel }) {
+  const [selectedEmoji, setSelectedEmoji] = useState(user.avatar || "👤");
+  const [bgColor, setBgColor] = useState(user.avatarColor || "#4a85a8");
+  const [textColor, setTextColor] = useState(user.avatarTextColor || "#ffffff");
+  const [style, setStyle] = useState(user.avatarStyle || "circle");
+  const [size, setSize] = useState(user.avatarSize || "md");
+
+  const emojis = ["👤", "😊", "😎", "🎨", "🚀", "⭐", "🎭", "🌟", "💡", "🔥", "🎪", "🎬", "🎵", "📚", "🏆", "🌈", "💻", "🎯"];
+  const colors = ["#4a85a8", "#c94b4b", "#5b7a8f", "#f39c12", "#27ae60", "#8e44ad", "#e74c3c", "#34495e"];
+  const sizeMap = { sm: 32, md: 48, lg: 64 };
+  
+  const renderPreview = () => {
+    const s = sizeMap[size];
+    const borderRadius = style === "circle" ? "50%" : style === "square" ? "0%" : "20%";
+    return (
+      <div style={{
+        width: s,
+        height: s,
+        borderRadius,
+        background: bgColor,
+        color: textColor,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: s * 0.5,
+        fontWeight: 700,
+        border: `2px solid ${C.border}`,
+      }}>
+        {selectedEmoji}
+      </div>
+    );
+  };
+
+  const generatePNG = async () => {
+    const canvas = document.createElement("canvas");
+    const size = 200;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    
+    const borderRadius = style === "circle" ? size / 2 : style === "square" ? 0 : size * 0.2;
+    ctx.beginPath();
+    ctx.moveTo(borderRadius, 0);
+    ctx.lineTo(size - borderRadius, 0);
+    ctx.quadraticCurveTo(size, 0, size, borderRadius);
+    ctx.lineTo(size, size - borderRadius);
+    ctx.quadraticCurveTo(size, size, size - borderRadius, size);
+    ctx.lineTo(borderRadius, size);
+    ctx.quadraticCurveTo(0, size, 0, size - borderRadius);
+    ctx.lineTo(0, borderRadius);
+    ctx.quadraticCurveTo(0, 0, borderRadius, 0);
+    ctx.fill();
+    
+    ctx.fillStyle = bgColor;
+    ctx.fill();
+    ctx.fillStyle = textColor;
+    ctx.font = "bold 100px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(selectedEmoji, size / 2, size / 2);
+
+    const pngData = canvas.toDataURL("image/png");
+    return pngData;
+  };
+
+  const handleSave = async () => {
+    const pngData = await generatePNG();
+    onSave({
+      avatar: selectedEmoji,
+      avatarColor: bgColor,
+      avatarTextColor: textColor,
+      avatarStyle: style,
+      avatarSize: size,
+      avatarImage: pngData,
+    });
+  };
+
   return (
-    <div style={{ width:size, height:size, borderRadius:"50%", background:user.avatarColor||"#888", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:size*0.34, fontWeight:700, flexShrink:0, fontFamily:T.body }}>
-      {user.avatar}
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.5)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 100,
+      padding: 16,
+    }}>
+      <div style={{
+        background: C.surface,
+        borderRadius: 16,
+        padding: 24,
+        maxWidth: 500,
+        width: "100%",
+        maxHeight: "90vh",
+        overflow: "auto",
+      }}>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 20, fontFamily: T.body }}>
+          Customize Avatar
+        </div>
+        <div style={{ textAlign: "center", marginBottom: 24, padding: "20px", background: C.bg, borderRadius: 12 }}>
+          {renderPreview()}
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 10, fontFamily: T.body }}>
+            Choose Emoji
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }}>
+            {emojis.map(emoji => (
+              <button
+                key={emoji}
+                onClick={() => setSelectedEmoji(emoji)}
+                style={{
+                  background: selectedEmoji === emoji ? C.accent : C.border,
+                  border: `2px solid ${selectedEmoji === emoji ? C.accent : C.border}`,
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 24,
+                  cursor: "pointer",
+                }}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 8, fontFamily: T.body }}>
+              Background
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              {colors.map(color => (
+                <button
+                  key={color}
+                  onClick={() => setBgColor(color)}
+                  style={{
+                    width: "100%",
+                    height: 40,
+                    borderRadius: 8,
+                    background: color,
+                    border: bgColor === color ? `3px solid ${C.accent}` : `2px solid ${C.border}`,
+                    cursor: "pointer",
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            onClick={handleSave}
+            style={{
+              flex: 1,
+              background: C.accent,
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: 12,
+              fontSize: 14,
+              cursor: "pointer",
+              fontFamily: T.body,
+              fontWeight: 600,
+            }}
+          >
+            Save Avatar
+          </button>
+          <button
+            onClick={onCancel}
+            style={{
+              flex: 1,
+              background: C.border,
+              color: C.text,
+              border: "none",
+              borderRadius: 8,
+              padding: 12,
+              fontSize: 14,
+              cursor: "pointer",
+              fontFamily: T.body,
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function Av({ user, size=36 }) {
+  if (user.avatarImage) {
+    const borderRadius = user.avatarStyle === "circle" ? "50%" : user.avatarStyle === "square" ? "0%" : "20%";
+    return (
+      <div style={{
+        width: size,
+        height: size,
+        borderRadius,
+        backgroundImage: `url(${user.avatarImage})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        flexShrink: 0,
+      }}/>
+    );
+  }
+  const borderRadius = user.avatarStyle === "circle" ? "50%" : user.avatarStyle === "square" ? "0%" : "20%";
+  return (
+    <div style={{
+      width: size,
+      height: size,
+      borderRadius,
+      background: user.avatarColor || "#888",
+      color: user.avatarTextColor || "#fff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: size * 0.34,
+      fontWeight: 700,
+      flexShrink: 0,
+      fontFamily: T.body,
+    }}>
+      {user.avatar || "👤"}
     </div>
   );
 }
