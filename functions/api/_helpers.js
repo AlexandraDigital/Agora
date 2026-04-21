@@ -74,6 +74,7 @@ export async function shapePost(row, db) {
     content:   row.content,
     timestamp: row.timestamp,
     media:     row.mediaType ? { type: row.mediaType, thumb: row.mediaData, videoUrl: row.mediaVideoUrl || null } : null,
+    url:       row.url,
     likes:     likes.results.map(r => r.userId),
     comments:  comments.results.map(c => ({
       id: c.id, authorId: c.authorId, text: c.text, timestamp: c.timestamp,
