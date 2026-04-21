@@ -9,21 +9,22 @@ export async function onRequestDelete({ params, request, env }) {
     const postId = params.id;
     if (!postId) return errResponse("Post ID required", 400);
 
-    // Verify the post belongs to the current user
+    // Fetch post and verify ownership
     const post = await db.prepare(
       "SELECT * FROM posts WHERE id=?"
     ).bind(postId).first();
 
-    if (!post) return errResponse("Post not found", 404);
-    if (post.authorId !== cu.id) return errResponse("Forbidden", 403);
+    if (!post) return errResponse(`Post not found (ID: ${postId})`, 404);
+    if (post.authorId !== cu.id) return errResponse("Forbidden — you don't own this post", 403);
 
     // Delete the post
-    await db.prepare(
+    const result = await db.prepare(
       "DELETE FROM posts WHERE id=?"
     ).bind(postId).run();
 
-    return jsonResponse({ success: true });
+    return jsonResponse({ success: true, deleted: postId });
   } catch (err) {
-    return errResponse("Delete failed: " + err.message, 500);
+    console.error("DELETE /api/posts/[id] error:", err);
+    return errResponse(`Delete failed: ${err.message}`, 500);
   }
 }
