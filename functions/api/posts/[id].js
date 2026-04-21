@@ -1,43 +1,29 @@
-import { verifyAuth, shapePost, jsonResponse, errResponse } from "../_helpers.js";
+import { verifyAuth, jsonResponse, errResponse } from "../_helpers.js";
 
-export async function onRequestDelete({ request, env, params }) {
-  const db = env.DB;
-  const cu = await verifyAuth(request, db);
-  if (!cu) return errResponse("Unauthorized", 401);
+export async function onRequestDelete({ params, request, env }) {
+  try {
+    const db = env.DB;
+    const cu = await verifyAuth(request, db);
+    if (!cu) return errResponse("Unauthorized", 401);
 
-  const postId = params.id;
-  const post = await db.prepare("SELECT * FROM posts WHERE id = ?").bind(postId).first();
-  if (!post) return errResponse("Post not found", 404);
+    const postId = params.id;
+    if (!postId) return errResponse("Post ID required", 400);
 
-  // Check ownership
-  if (post.authorId !== cu.id) return errResponse("Forbidden", 403);
+    // Verify the post belongs to the current user
+    const post = await db.prepare(
+      "SELECT * FROM posts WHERE id=?"
+    ).bind(postId).first();
 
-  // Delete likes, comments, and post
-  await db.prepare("DELETE FROM likes WHERE postId = ?").bind(postId).run();
-  await db.prepare("DELETE FROM comments WHERE postId = ?").bind(postId).run();
-  await db.prepare("DELETE FROM posts WHERE id = ?").bind(postId).run();
+    if (!post) return errResponse("Post not found", 404);
+    if (post.authorId !== cu.id) return errResponse("Forbidden", 403);
 
-  return jsonResponse({ success: true });
-}
+    // Delete the post
+    await db.prepare(
+      "DELETE FROM posts WHERE id=?"
+    ).bind(postId).run();
 
-export async function onRequestPut({ request, env, params }) {
-  const db = env.DB;
-  const cu = await verifyAuth(request, db);
-  if (!cu) return errResponse("Unauthorized", 401);
-
-  const postId = params.id;
-  const post = await db.prepare("SELECT * FROM posts WHERE id = ?").bind(postId).first();
-  if (!post) return errResponse("Post not found", 404);
-
-  // Check ownership
-  if (post.authorId !== cu.id) return errResponse("Forbidden", 403);
-
-  const { content } = await request.json();
-  if (!content?.trim()) return errResponse("Content required", 400);
-
-  await db.prepare("UPDATE posts SET content = ? WHERE id = ?")
-    .bind(content.trim(), postId).run();
-
-  const updated = await db.prepare("SELECT * FROM posts WHERE id = ?").bind(postId).first();
-  return jsonResponse(await shapePost(updated, db));
+    return jsonResponse({ success: true });
+  } catch (err) {
+    return errResponse("Delete failed: " + err.message, 500);
+  }
 }
