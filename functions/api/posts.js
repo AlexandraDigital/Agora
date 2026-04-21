@@ -1,4 +1,5 @@
 import { verifyAuth, shapePost, jsonResponse, errResponse } from "./_helpers.js";
+import { v4 as uuidv4 } from 'https://cdn.jsdelivr.net/npm/uuid@9.0.0/+esm';
 
 export async function onRequestGet({ request, env }) {
   const db = env.DB;
@@ -40,10 +41,12 @@ export async function onRequestPost({ request, env }) {
     const url = body.url;
     if (!content?.trim()) return errResponse("Content required", 400);
 
+    const postId = uuidv4();
     const ts = Date.now();
     await db.prepare(
-      "INSERT INTO posts (authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp) VALUES (?,?,?,?,?,?,?)"
+      "INSERT INTO posts (id,authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp) VALUES (?,?,?,?,?,?,?,?)"
     ).bind(
+      postId,
       cu.id, content.trim(),
       media?.type ?? null,
       media?.thumb ?? null,
@@ -53,8 +56,8 @@ export async function onRequestPost({ request, env }) {
     ).run();
 
     const row = await db.prepare(
-      "SELECT * FROM posts WHERE authorId=? AND timestamp=? ORDER BY rowid DESC LIMIT 1"
-    ).bind(cu.id, ts).first();
+      "SELECT * FROM posts WHERE id=?"
+    ).bind(postId).first();
     if (!row) return errResponse("Post created but could not be retrieved", 500);
     return jsonResponse(await shapePost(row, db), 201);
   } catch (err) {
@@ -74,7 +77,7 @@ export async function onRequestDelete({ request, env }) {
 
     // Verify the post belongs to the current user
     const post = await db.prepare(
-      "SELECT * FROM posts WHERE rowid=?"
+      "SELECT * FROM posts WHERE id=?"
     ).bind(postId).first();
 
     if (!post) return errResponse("Post not found", 404);
@@ -82,7 +85,7 @@ export async function onRequestDelete({ request, env }) {
 
     // Delete the post
     await db.prepare(
-      "DELETE FROM posts WHERE rowid=?"
+      "DELETE FROM posts WHERE id=?"
     ).bind(postId).run();
 
     return jsonResponse({ success: true });
