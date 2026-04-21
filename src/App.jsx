@@ -32,11 +32,17 @@ const authHeaders = (token) => ({
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
 
+const safeJson = async (r) => {
+  const text = await r.text();
+  try { return JSON.parse(text); }
+  catch { return { error: `Server error ${r.status}: unexpected response` }; }
+};
+
 const api = {
-  post: (path, body, token) => fetch(`${API}${path}`, { method:"POST", headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
-  put:  (path, body, token) => fetch(`${API}${path}`, { method:"PUT",  headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
-  get:  (path, token)       => fetch(`${API}${path}`, { headers:authHeaders(token) }).then(r=>r.json()),
-  delete: (path, token)     => fetch(`${API}${path}`, { method:"DELETE", headers:authHeaders(token) }).then(r=>r.json()),
+  post:   (path, body, token) => fetch(`${API}${path}`, { method:"POST",   headers:authHeaders(token), body:JSON.stringify(body) }).then(safeJson),
+  put:    (path, body, token) => fetch(`${API}${path}`, { method:"PUT",    headers:authHeaders(token), body:JSON.stringify(body) }).then(safeJson),
+  get:    (path, token)       => fetch(`${API}${path}`, { headers:authHeaders(token) }).then(safeJson),
+  delete: (path, token)       => fetch(`${API}${path}`, { method:"DELETE", headers:authHeaders(token) }).then(safeJson),
 };
 
 const fmtTime = (ts) => {
@@ -191,7 +197,7 @@ function AvatarCustomizer({ user, token, onSave, onCancel }) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ base64, contentType }),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || res.status);
     return data.url;
   };
@@ -818,7 +824,7 @@ function ComposeModal({ cu, token, onPost, onClose }) {
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
             body: JSON.stringify({ base64, contentType: file.mime, size: file.raw.size }),
           });
-          const data = await resp.json();
+          const data = await safeJson(resp);
           if (!resp.ok) { alert("Video upload failed: " + (data.error || resp.status)); setUploading(false); return; }
           mediaPayload = { type: "video", thumb: file.thumb, videoUrl: data.url };
         } else {
