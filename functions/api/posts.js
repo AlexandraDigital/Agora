@@ -29,28 +29,35 @@ export async function onRequestGet({ request, env }) {
 }
 
 export async function onRequestPost({ request, env }) {
-  const db = env.DB;
-  const cu = await verifyAuth(request, db);
-  if (!cu) return errResponse("Unauthorized", 401);
+  try {
+    const db = env.DB;
+    const cu = await verifyAuth(request, db);
+    if (!cu) return errResponse("Unauthorized", 401);
 
-  const { content, media, url } = await request.json();
-  if (!content?.trim()) return errResponse("Content required", 400);
+    const body = await request.json();
+    const content = body.content;
+    const media = body.media;
+    const url = body.url;
+    if (!content?.trim()) return errResponse("Content required", 400);
 
-  const ts = Date.now();
-  await db.prepare(
-    "INSERT INTO posts (authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp) VALUES (?,?,?,?,?,?,?)"
-  ).bind(
-    cu.id, content.trim(),
-    media?.type || null,
-    media?.thumb || null,
-    media?.videoUrl || null,
-    url || null,
-    ts
-  ).run();
+    const ts = Date.now();
+    await db.prepare(
+      "INSERT INTO posts (authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp) VALUES (?,?,?,?,?,?,?)"
+    ).bind(
+      cu.id, content.trim(),
+      media?.type ?? null,
+      media?.thumb ?? null,
+      media?.videoUrl ?? null,
+      url ?? null,
+      ts
+    ).run();
 
-  const row = await db.prepare(
-    "SELECT * FROM posts WHERE authorId=? AND timestamp=? ORDER BY rowid DESC LIMIT 1"
-  ).bind(cu.id, ts).first();
-  if (!row) return errResponse("Post created but could not be retrieved", 500);
-  return jsonResponse(await shapePost(row, db), 201);
+    const row = await db.prepare(
+      "SELECT * FROM posts WHERE authorId=? AND timestamp=? ORDER BY rowid DESC LIMIT 1"
+    ).bind(cu.id, ts).first();
+    if (!row) return errResponse("Post created but could not be retrieved", 500);
+    return jsonResponse(await shapePost(row, db), 201);
+  } catch (err) {
+    return errResponse("Post failed: " + err.message, 500);
+  }
 }
