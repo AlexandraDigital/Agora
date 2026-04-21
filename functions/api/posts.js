@@ -74,6 +74,10 @@ export async function onRequestPost({ request, env }) {
 
 export async function onRequestDelete({ request, env }) {
   try {
+    console.log("DELETE handler called");
+    console.log("Request URL:", request.url);
+    console.log("Request method:", request.method);
+    
     const db = env.DB;
     const cu = await verifyAuth(request, db);
     if (!cu) return errResponse("Unauthorized", 401);
@@ -83,6 +87,9 @@ export async function onRequestDelete({ request, env }) {
     const pathParts = url.pathname.split("/");
     const postId = pathParts[pathParts.length - 1];
     
+    console.log("Path parts:", pathParts);
+    console.log("Extracted postId:", postId);
+    
     if (!postId) return errResponse("Post ID required", 400);
 
     // Verify the post belongs to the current user
@@ -90,7 +97,7 @@ export async function onRequestDelete({ request, env }) {
       "SELECT * FROM posts WHERE id=?"
     ).bind(postId).first();
 
-    if (!post) return errResponse("Post not found", 404);
+    if (!post) return errResponse("Post not found (ID: " + postId + ")", 404);
     if (post.authorId !== cu.id) return errResponse("Forbidden", 403);
 
     // Delete the post
@@ -100,6 +107,7 @@ export async function onRequestDelete({ request, env }) {
 
     return jsonResponse({ success: true });
   } catch (err) {
+    console.error("DELETE error:", err);
     return errResponse("Delete failed: " + err.message, 500);
   }
 }
