@@ -14,12 +14,13 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS posts (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  id        TEXT PRIMARY KEY,
   authorId  INTEGER NOT NULL,
   content   TEXT NOT NULL,
   timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
   mediaType TEXT,
   mediaData TEXT,
+  mediaVideoUrl TEXT,
   url       TEXT,
   FOREIGN KEY (authorId) REFERENCES users(id) ON DELETE CASCADE
 );
