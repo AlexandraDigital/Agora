@@ -1,5 +1,12 @@
 import { verifyAuth, shapePost, jsonResponse, errResponse } from "./_helpers.js";
-import { v4 as uuidv4 } from 'https://cdn.jsdelivr.net/npm/uuid@9.0.0/+esm';
+
+// Simple UUID v4 generator using Web Crypto API
+function generateUUID() {
+  return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
+    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4))))
+    .toString(16)
+  );
+}
 
 export async function onRequestGet({ request, env }) {
   const db = env.DB;
@@ -41,7 +48,7 @@ export async function onRequestPost({ request, env }) {
     const url = body.url;
     if (!content?.trim()) return errResponse("Content required", 400);
 
-    const postId = uuidv4();
+    const postId = generateUUID();
     const ts = Date.now();
     await db.prepare(
       "INSERT INTO posts (id,authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp) VALUES (?,?,?,?,?,?,?,?)"
