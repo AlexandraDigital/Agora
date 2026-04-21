@@ -4,20 +4,20 @@
   "description": "A public square without the algorithm",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#1e3c5a",
   "theme_color": "#1e3c5a",
   "scope": "/",
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><circle cx='96' cy='96' r='84' fill='%231e3c5a'/><g fill='%23c8aa7d'><polygon points='96,20 102,52 152,52 114,88 132,120 96,84 60,120 78,88 40,52 90,52'/></g><text x='96' y='130' font-size='40' font-family='serif' fill='white' text-anchor='middle'>agora</text></svg>",
+      "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><circle cx='256' cy='256' r='224' fill='%231e3c5a'/><g fill='%23c8aa7d'><polygon points='256,64 268,144 346,144 286,200 318,280 256,224 194,280 226,200 166,144 244,144'/></g><text x='256' y='350' font-size='120' font-family='serif' fill='white' text-anchor='middle'>agora</text></svg>",
+      "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]
