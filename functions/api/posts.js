@@ -36,11 +36,10 @@ export async function onRequestPost({ request, env }) {
   const { content, media, url } = await request.json();
   if (!content?.trim()) return errResponse("Content required", 400);
 
-  const id = `p_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-  await db.prepare(
-    "INSERT INTO posts (id,authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp) VALUES (?,?,?,?,?,?,?,?)"
+  const result = await db.prepare(
+    "INSERT INTO posts (authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp) VALUES (?,?,?,?,?,?,?)"
   ).bind(
-    id, cu.id, content.trim(),
+    cu.id, content.trim(),
     media?.type || null,
     media?.thumb || null,
     media?.videoUrl || null,
@@ -48,6 +47,7 @@ export async function onRequestPost({ request, env }) {
     Date.now()
   ).run();
 
+  const id = result.meta.last_row_id;
   const row = await db.prepare("SELECT * FROM posts WHERE id=?").bind(id).first();
   return jsonResponse(await shapePost(row, db), 201);
 }
