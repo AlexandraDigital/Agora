@@ -36,7 +36,8 @@ export async function onRequestPost({ request, env }) {
   const { content, media, url } = await request.json();
   if (!content?.trim()) return errResponse("Content required", 400);
 
-  const result = await db.prepare(
+  const ts = Date.now();
+  await db.prepare(
     "INSERT INTO posts (authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp) VALUES (?,?,?,?,?,?,?)"
   ).bind(
     cu.id, content.trim(),
@@ -44,10 +45,12 @@ export async function onRequestPost({ request, env }) {
     media?.thumb || null,
     media?.videoUrl || null,
     url || null,
-    Date.now()
+    ts
   ).run();
 
-  const id = result.meta.last_row_id;
-  const row = await db.prepare("SELECT * FROM posts WHERE id=?").bind(id).first();
+  const row = await db.prepare(
+    "SELECT * FROM posts WHERE authorId=? AND timestamp=? ORDER BY rowid DESC LIMIT 1"
+  ).bind(cu.id, ts).first();
+  if (!row) return errResponse("Post created but could not be retrieved", 500);
   return jsonResponse(await shapePost(row, db), 201);
 }
