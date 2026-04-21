@@ -369,6 +369,7 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
   const [open, setOpen] = useState(false);
   const [ct, setCt] = useState("");
   const [showDeleteMenu, setShowDeleteMenu] = useState(false);
+  const [playingUrl, setPlayingUrl] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState(null);
   if (!author) return null;
@@ -430,40 +431,90 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
         const url = post.url;
         const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]+)/);
         const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
-        const ttMatch = url.match(/tiktok\.com/);
+        const ttMatch = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/);
+
+        const VideoThumbnail = ({ thumbUrl, embedSrc, embedAllow, label, linkUrl }) => (
+          playingUrl
+            ? <div style={{ position:"relative", paddingBottom:"56.25%", height:0, overflow:"hidden" }}>
+                <iframe
+                  src={embedSrc}
+                  style={{ position:"absolute", top:0, left:0, width:"100%", height:"100%", border:"none" }}
+                  allow={embedAllow}
+                  allowFullScreen
+                />
+              </div>
+            : <div
+                onClick={linkUrl ? undefined : () => setPlayingUrl(true)}
+                style={{ position:"relative", cursor: linkUrl ? "default" : "pointer", lineHeight:0, background:"#000", borderRadius:8, overflow:"hidden" }}
+              >
+                <img
+                  src={thumbUrl}
+                  alt={label}
+                  style={{ width:"100%", maxHeight:340, objectFit:"cover", display:"block", opacity:0.88 }}
+                  onError={e => { e.target.style.minHeight="120px"; }}
+                />
+                <div style={{
+                  position:"absolute", inset:0, display:"flex", flexDirection:"column",
+                  alignItems:"center", justifyContent:"center", gap:8,
+                }}>
+                  {linkUrl
+                    ? <a href={linkUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 20px",
+                          background:"rgba(0,0,0,0.72)", borderRadius:24, textDecoration:"none",
+                          color:"#fff", fontSize:14, fontFamily:T.body, backdropFilter:"blur(4px)" }}>
+                        <span style={{ fontSize:18 }}>\u25b6</span>
+                        <span>Watch on TikTok</span>
+                        <span style={{ fontSize:11 }}>\u2197</span>
+                      </a>
+                    : <div style={{
+                        width:56, height:56, borderRadius:"50%",
+                        background:"rgba(0,0,0,0.65)", display:"flex",
+                        alignItems:"center", justifyContent:"center",
+                        backdropFilter:"blur(2px)",
+                        boxShadow:"0 2px 12px rgba(0,0,0,0.4)",
+                      }}>
+                        <span style={{ fontSize:22, marginLeft:4, color:"#fff" }}>\u25b6</span>
+                      </div>
+                  }
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.8)", fontFamily:T.body, textShadow:"0 1px 4px rgba(0,0,0,0.8)" }}>{label}</div>
+                </div>
+              </div>
+        );
+
         if (ytMatch) {
           return (
-            <div style={{ margin:"0 0 14px", position:"relative", paddingBottom:"56.25%", height:0, overflow:"hidden" }}>
-              <iframe
-                src={`https://www.youtube.com/embed/${ytMatch[1]}`}
-                style={{ position:"absolute", top:0, left:0, width:"100%", height:"100%", border:"none" }}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
+            <div style={{ margin:"0 0 14px" }}>
+              <VideoThumbnail
+                thumbUrl={`https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`}
+                embedSrc={`https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1`}
+                embedAllow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                label="YouTube"
               />
             </div>
           );
         }
         if (vimeoMatch) {
           return (
-            <div style={{ margin:"0 0 14px", position:"relative", paddingBottom:"56.25%", height:0, overflow:"hidden" }}>
-              <iframe
-                src={`https://player.vimeo.com/video/${vimeoMatch[1]}`}
-                style={{ position:"absolute", top:0, left:0, width:"100%", height:"100%", border:"none" }}
-                allow="autoplay; fullscreen; picture-in-picture"
-                allowFullScreen
+            <div style={{ margin:"0 0 14px" }}>
+              <VideoThumbnail
+                thumbUrl={`https://vumbnail.com/${vimeoMatch[1]}.jpg`}
+                embedSrc={`https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`}
+                embedAllow="autoplay; fullscreen; picture-in-picture"
+                label="Vimeo"
               />
             </div>
           );
         }
         if (ttMatch) {
           return (
-            <div style={{ margin:"0 16px 14px" }}>
-              <a href={url} target="_blank" rel="noopener noreferrer"
-                style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 13px", background:C.accentLight, border:`1px solid ${C.border}`, borderRadius:10, textDecoration:"none", color:C.accent, fontSize:13, fontFamily:T.body }}>
-                <span style={{ flexShrink:0 }}>▶</span>
-                <span style={{ flex:1 }}>Watch on TikTok</span>
-                <span style={{ flexShrink:0, fontSize:11 }}>↗</span>
-              </a>
+            <div style={{ margin:"0 0 14px" }}>
+              <VideoThumbnail
+                thumbUrl={`https://www.tiktok.com/api/img/?itemId=${ttMatch[1]}&location=0`}
+                embedSrc={null}
+                embedAllow={null}
+                label="Watch on TikTok"
+                linkUrl={url}
+              />
             </div>
           );
         }
@@ -519,7 +570,7 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
 }
 
 function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError }) {
-  const feed = posts.filter(p=>cu.following.includes(p.authorId)||p.authorId===cu.id).sort((a,b)=>b.timestamp-a.timestamp);
+  const feed = [...posts].sort((a,b)=>b.timestamp-a.timestamp);
   return (
     <div>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
@@ -952,7 +1003,11 @@ export default function Agora() {
         api.get("/api/users", token),
         api.get(`/api/posts?feed=1`, token),
       ]);
-      if (!us.error) setUsers(us);
+      if (!us.error) {
+        setUsers(us);
+        const freshCu = us.find(u => u.id === cu.id);
+        if (freshCu) setCu(freshCu);
+      }
       if (!ps.error) setPosts(ps);
     };
     load();
