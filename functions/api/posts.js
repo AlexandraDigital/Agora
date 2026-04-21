@@ -78,8 +78,11 @@ export async function onRequestDelete({ request, env }) {
     const cu = await verifyAuth(request, db);
     if (!cu) return errResponse("Unauthorized", 401);
 
+    // Extract post ID from URL path: /api/posts/{id}
     const url = new URL(request.url);
-    const postId = url.searchParams.get("id");
+    const pathParts = url.pathname.split("/");
+    const postId = pathParts[pathParts.length - 1];
+    
     if (!postId) return errResponse("Post ID required", 400);
 
     // Verify the post belongs to the current user
