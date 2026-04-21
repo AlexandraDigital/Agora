@@ -389,6 +389,7 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
       await onDelete(post.id);
       setShowDeleteMenu(false);
     } catch (err) {
+      console.error("Delete post error:", err);
       onError?.(err);
     } finally {
       setDeleting(false);
@@ -400,6 +401,7 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
     try {
       await onDeleteComment(post.id, cid);
     } catch (err) {
+      console.error("Delete comment error:", err);
       onError?.(err);
     } finally {
       setDeletingCommentId(null);
@@ -468,9 +470,9 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
                         style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 20px",
                           background:"rgba(0,0,0,0.72)", borderRadius:24, textDecoration:"none",
                           color:"#fff", fontSize:14, fontFamily:T.body, backdropFilter:"blur(4px)" }}>
-                        <span style={{ fontSize:18 }}>\u25b6</span>
+                        <span style={{ fontSize:18 }}>▶</span>
                         <span>Watch on TikTok</span>
-                        <span style={{ fontSize:11 }}>\u2197</span>
+                        <span style={{ fontSize:11 }}>↗</span>
                       </a>
                     : <div style={{
                         width:56, height:56, borderRadius:"50%",
@@ -479,7 +481,7 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
                         backdropFilter:"blur(2px)",
                         boxShadow:"0 2px 12px rgba(0,0,0,0.4)",
                       }}>
-                        <span style={{ fontSize:22, marginLeft:4, color:"#fff" }}>\u25b6</span>
+                        <span style={{ fontSize:22, marginLeft:4, color:"#fff" }}>▶</span>
                       </div>
                   }
                   <div style={{ fontSize:11, color:"rgba(255,255,255,0.8)", fontFamily:T.body, textShadow:"0 1px 4px rgba(0,0,0,0.8)" }}>{label}</div>
@@ -1081,16 +1083,19 @@ export default function Agora() {
     setPosts(prev => prev.filter(p => p.id !== pid));
     try {
       const res = await api.delete(`/api/posts/${pid}`, token);
+      console.log("Delete response:", res);
       if (res.error) {
         // Revert on error
+        console.error("Delete error:", res.error);
         setPosts(originalPosts);
-        setToast({ message: "Failed to delete post. Please try again.", type: "error" });
+        setToast({ message: res.error, type: "error" });
         throw new Error(res.error);
       }
       setToast({ message: "Post deleted.", type: "success" });
     } catch (err) {
+      console.error("Delete caught error:", err);
       setPosts(originalPosts);
-      setToast({ message: "Failed to delete post. Please try again.", type: "error" });
+      setToast({ message: err.message || "Failed to delete post.", type: "error" });
     }
   };
 
