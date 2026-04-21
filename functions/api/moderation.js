@@ -6,20 +6,19 @@
 // Profanity filter list (can be expanded)
 const PROFANITY_LIST = [
   'bad', 'hate', 'kill', 'die', 'stupid', 'dumb', 'idiot',
-  // Add more as needed - this is a minimal list for demo
 ];
 
-// Spam patterns
+// Spam patterns - Price patterns, URL patterns, promotional content, excessive caps
 const SPAM_PATTERNS = [
-  /(?:follow|like|click|buy|subscribe|visit|link)[\\s]*(?:my|for|to|the)[\\s]*(?:profile|page|site|store)/gi,
-  /(?:\\$+\\d+|[\\d]+\\$+)/g, // Price patterns
-  /(?:http|https)?[\\s]*:?\\/+/gi, // URL patterns
-  /[A-Z]{3,}[\\s]+[A-Z]{3,}/g, // ALL CAPS chains
+  /(?:follow|like|click|buy|subscribe|visit|link)\s*(?:my|for|to|the)\s*(?:profile|page|site|store)/gi,
+  /(?:\$+\d+|[\d]+\$+)/g,
+  /(?:http|https)?\s*:?\/+/gi,
+  /[A-Z]{3,}\s+[A-Z]{3,}/g,
 ];
 
 // Hate speech indicators (basic list)
 const HATE_PATTERNS = [
-  /hate[s]?[\\s]*(people|group|race|religion|gender)/gi,
+  /hate[s]?\s*(people|group|race|religion|gender)/gi,
   /racist|sexist|homophobic/gi,
 ];
 
@@ -79,11 +78,7 @@ export function detectTextContent(text, userPreferences = {}) {
 
 /**
  * Detect inappropriate images
- * Since free NSFW detection is limited, we use:
- * 1. Size heuristics (extremely small/large images are suspicious)
- * 2. Color analysis (basic nudity detection - high skin tone ratio)
- * 3. Placeholder for future ML model integration
- *
+ * Uses basic heuristics: file format validation, size checks
  * For production, consider: Cloudflare AI, Google Vision API, or similar
  */
 export async function detectImageContent(imageData, userPreferences = {}) {
@@ -113,7 +108,7 @@ export async function detectImageContent(imageData, userPreferences = {}) {
       }
 
       // Size heuristics
-      if (bytes.length < 1000) { // Suspiciously small
+      if (bytes.length < 1000) {
         reasons.push('Image file suspiciously small');
         severity = 'low';
       }
@@ -126,7 +121,6 @@ export async function detectImageContent(imageData, userPreferences = {}) {
     }
   } catch (err) {
     console.error('Image detection error:', err);
-    // Don't fail on detection errors
   }
 
   return {
@@ -173,7 +167,5 @@ export function determineModerationAction(textDetection, imageDetection) {
  * Returns modified content or null if user can't see it
  */
 export function applyUserFilters(post, currentUserId, db) {
-  // TODO: Check if post author is blocked/muted by current user
-  // TODO: Apply user preference filters
   return post;
 }
