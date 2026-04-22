@@ -52,8 +52,9 @@ export function detectSpam(text) {
   const spamPatterns = [
     /(?:http|ftp)s?:\/\/[^\s]+/gi,  // URLs
     /\b(?:\$+|bitcoin|crypto|nft|ethereum|dogecoin|ethereum|ripple|cardano)\b/gi,  // Crypto/financial spam
-    /(\w)\1{4,}/gi,                  // Repeated characters
-    /(?:click|buy|invest|join|free|win|earn|cash|money)\s+(?:now|here|fast|easy)(?:\s+[!@#$%]){1,}/gi, // Common spam phrases
+    /\b(?:click|buy|invest|join|free|win|earn|cash|money)\s+(?:now|here|fast|easy)\b/gi, // Common spam phrases
+    // Only flag as spam if text is primarily repeated characters (not normal words with extra letters)
+    /^[^a-zA-Z0-9]*(\w)\1{7,}[^a-zA-Z0-9]*$/gi,  // Standalone repeated chars (8+ times)
   ];
   
   const detected = spamPatterns.some(pattern => pattern.test(text));
