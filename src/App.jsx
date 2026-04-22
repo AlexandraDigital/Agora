@@ -749,7 +749,214 @@ function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComm
   );
 }
 
-function SettingsScreen({ cu, onLogout, onBack, onUpdate, users, onUnblock, onUnmute }) {
+// ── Moderation Panel Component ───────────────────────────────────
+function ModerationPanel({ token, cu, onError }) {
+  const [flags, setFlags] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(null);
+  const [filter, setFilter] = useState("pending");
+
+  useEffect(() => {
+    fetchFlags();
+  }, []);
+
+  const fetchFlags = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/api/moderation/flags", token);
+      if (!res.error) {
+        setFlags(res.flags || []);
+        setUsers(res.users || []);
+      } else {
+        onError?.({ message: res.error });
+      }
+    } catch (err) {
+      onError?.({ message: "Failed to load flagged posts" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const approveFlag = async (flagId) => {
+    setActionLoading(flagId);
+    try {
+      const res = await api.put(`/api/moderation/flags/${flagId}`, { reviewed: true }, token);
+      if (res.error) {
+        onError?.({ message: res.error });
+        return;
+      }
+      setFlags(prev => prev.map(f => f.id === flagId ? { ...f, reviewed: true } : f));
+    } catch (err) {
+      onError?.({ message: "Failed to approve flag" });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const deletePost = async (postId) => {
+    setActionLoading(postId);
+    try {
+      const res = await api.delete(`/api/posts/${postId}`, token);
+      if (res.error) {
+        onError?.({ message: res.error });
+        return;
+      }
+      setFlags(prev => prev.filter(f => f.postId !== postId));
+    } catch (err) {
+      onError?.({ message: "Failed to delete post" });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const filteredFlags = flags.filter(f => {
+    if (filter === "pending") return !f.reviewed;
+    if (filter === "reviewed") return f.reviewed;
+    return true;
+  });
+
+  const getUser = (uid) => users.find(u => u.id === uid);
+
+  // Only show for admin
+  if (cu.id !== "alex12g") return null;
+
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, marginBottom: 16 }}>
+      <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 16, fontFamily: T.body }}>🛡️ Moderation Dashboard</div>
+      
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {["pending", "reviewed", "all"].map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            style={{
+              background: filter === f ? C.accent : C.bg,
+              color: filter === f ? "#fff" : C.text,
+              border: `1px solid ${filter === f ? C.accent : C.border}`,
+              borderRadius: 6,
+              padding: "6px 12px",
+              fontSize: 12,
+              cursor: "pointer",
+              fontFamily: T.body,
+              fontWeight: 500,
+            }}
+          >
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+        <button
+          onClick={fetchFlags}
+          disabled={loading}
+          style={{
+            background: "none",
+            border: `1px solid ${C.border}`,
+            borderRadius: 6,
+            padding: "6px 12px",
+            fontSize: 12,
+            cursor: loading ? "default" : "pointer",
+            fontFamily: T.body,
+            color: C.text,
+            marginLeft: "auto",
+          }}
+        >
+          {loading ? "↻" : "Refresh"}
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 20, color: C.textMuted }}>Loading...</div>
+      ) : filteredFlags.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 20, color: C.textMuted, fontSize: 13 }}>
+          No {filter === "all" ? "flagged" : filter} posts
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {filteredFlags.map(flag => {
+            const author = getUser(flag.authorId);
+            if (!author) return null;
+            return (
+              <div
+                key={flag.id}
+                style={{
+                  background: flag.reviewed ? C.bg : "#fff8f0",
+                  border: `1px solid ${flag.reviewed ? C.border : "#f39c12"}`,
+                  borderRadius: 8,
+                  padding: 12,
+                  opacity: flag.reviewed ? 0.7 : 1,
+                }}
+              >
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+                  <Av user={author} size={32} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, fontFamily: T.body }}>
+                      {author.displayName} <span style={{ color: C.textMuted }}>@{author.username}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>
+                      Flagged for: <strong>{flag.reason}</strong>
+                    </div>
+                    <div style={{ fontSize: 13, fontFamily: T.body, lineHeight: 1.5, color: C.text, marginBottom: 8, padding: 8, background: C.surface, borderRadius: 6 }}>
+                      {flag.content}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.textMuted }}>
+                      {flag.reportCount} report{flag.reportCount !== 1 ? "s" : ""} · {fmtTime(flag.timestamp)}
+                    </div>
+                  </div>
+                </div>
+
+                {!flag.reviewed && (
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button
+                      onClick={() => approveFlag(flag.id)}
+                      disabled={actionLoading === flag.id}
+                      style={{
+                        background: "none",
+                        border: `1px solid ${C.success}`,
+                        color: C.success,
+                        borderRadius: 6,
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        cursor: actionLoading === flag.id ? "default" : "pointer",
+                        fontFamily: T.body,
+                        opacity: actionLoading === flag.id ? 0.5 : 1,
+                      }}
+                    >
+                      {actionLoading === flag.id ? "…" : "✓ Approve"}
+                    </button>
+                    <button
+                      onClick={() => deletePost(flag.postId)}
+                      disabled={actionLoading === flag.postId}
+                      style={{
+                        background: "none",
+                        border: "1px solid #d63031",
+                        color: "#d63031",
+                        borderRadius: 6,
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        cursor: actionLoading === flag.postId ? "default" : "pointer",
+                        fontFamily: T.body,
+                        opacity: actionLoading === flag.postId ? 0.5 : 1,
+                      }}
+                    >
+                      {actionLoading === flag.postId ? "…" : "Delete"}
+                    </button>
+                  </div>
+                )}
+                {flag.reviewed && (
+                  <div style={{ fontSize: 12, color: C.success, fontStyle: "italic" }}>
+                    ✓ Reviewed
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsScreen({ cu, onLogout, onBack, onUpdate, users, onUnblock, onUnmute, token, onError }) {
   const [dn, setDn] = useState(cu.displayName);
   const [bio, setBio] = useState(cu.bio||"");
   const [saved, setSaved] = useState(false);
@@ -792,6 +999,10 @@ function SettingsScreen({ cu, onLogout, onBack, onUpdate, users, onUnblock, onUn
   return (
     <div>
       <button onClick={onBack} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:14, padding:"0 0 16px", fontFamily:T.body }}>← back</button>
+      
+      {/* Moderation Panel - Admin Only */}
+      <ModerationPanel token={token} cu={cu} onError={onError} />
+      
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
         <div style={{ fontWeight:600, fontSize:16, marginBottom:16, fontFamily:T.body }}>Edit profile</div>
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
@@ -1409,7 +1620,7 @@ export default function Agora() {
         </>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow}/>}
         {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onBlock={block} onMute={mute}/>}
-        {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} users={users} onUnblock={unblock} onUnmute={unmute}/>}
+        {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} users={users} onUnblock={unblock} onUnmute={unmute} token={token} onError={(err)=>setToast({message:err.message,type:"error"})}/>}
       </div>
 
       <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.surface, borderTop:`1px solid ${C.border}`, display:"flex", padding:"8px 0 18px", zIndex:50 }}>
