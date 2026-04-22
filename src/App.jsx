@@ -1361,8 +1361,15 @@ export default function Agora() {
         api.get(`/api/posts?feed=1`, token),
       ]);
       if (!us.error) {
-        setUsers(us);
-        const freshCu = us.find(u => u.id === cu.id);
+        const sanitized = us.map(u => ({
+          ...u,
+          following: Array.isArray(u.following) ? u.following : [],
+          followers: Array.isArray(u.followers) ? u.followers : [],
+          blocked:   Array.isArray(u.blocked)   ? u.blocked   : [],
+          muted:     Array.isArray(u.muted)     ? u.muted     : [],
+        }));
+        setUsers(sanitized);
+        const freshCu = sanitized.find(u => u.id === cu.id);
         if (freshCu) setCu(freshCu);
       }
       if (!ps.error) setPosts(ps);
