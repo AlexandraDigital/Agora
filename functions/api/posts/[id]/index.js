@@ -17,10 +17,10 @@ export async function onRequest({ request, env, params }) {
       ).bind(postId).first();
 
       if (!post) return errResponse('Post not found (ID: ' + postId + ')', 404);
-      
-      // Allow: post author OR admin (alex12g)
-      const isAuthor = post.authorId === cu.id;
-      const isAdmin = cu.id === 'alex12g';
+
+      // Allow: post author OR admin (compare as strings — authorId is integer in DB)
+      const isAuthor = String(post.authorId) === String(cu.id);
+      const isAdmin  = cu.username === 'alex12g';
       
       if (!isAuthor && !isAdmin) {
         return errResponse('Forbidden', 403);
