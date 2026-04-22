@@ -71,7 +71,7 @@ export async function onRequestPost({ request, env }) {
       
       if (profanityResult.detected && spamResult.detected) {
         moderationReason = `Contains both profanity and spam patterns`;
-        flagType = "profanity_and_spam";
+        flagType = "combined";
       } else if (profanityResult.detected) {
         moderationReason = `Profanity detected: ${profanityResult.patterns.join(", ")}`;
         flagType = "profanity";
@@ -83,17 +83,7 @@ export async function onRequestPost({ request, env }) {
 
     // Auto-delete high-severity content
     if (severity === "high") {
-      // Log the flag
-      await db.prepare(
-        "INSERT INTO moderation_flags (postId,flagType,reason,autoAction,isReviewed) VALUES (?,?,?,?,?)"
-      ).bind(
-        generateUUID(),
-        flagType,
-        moderationReason,
-        "auto_deleted",
-        1
-      ).run();
-      
+      // We can't insert a flag without a post, so just reject
       return errResponse(`Content rejected: ${moderationReason}`, 400);
     }
 
@@ -105,7 +95,8 @@ export async function onRequestPost({ request, env }) {
       "INSERT INTO posts (id,authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp) VALUES (?,?,?,?,?,?,?,?)"
     ).bind(
       postId,
-      cu.id, content.trim(),
+      cu.id,
+      content.trim(),
       media?.type ?? null,
       media?.thumb ?? null,
       media?.videoUrl ?? null,
@@ -114,9 +105,9 @@ export async function onRequestPost({ request, env }) {
     ).run();
 
     // Flag if medium severity
-    if (severity === "medium") {
+    if (severity === "medium" && flagType) {
       await db.prepare(
-        "INSERT INTO moderation_flags (postId,flagType,reason,autoAction,isReviewed) VALUES (?,?,?,?,?)"
+        "INSERT INTO moderation_flags (postId, flagType, reason, autoAction, isReviewed) VALUES (?, ?, ?, ?, ?)"
       ).bind(
         postId,
         flagType,
