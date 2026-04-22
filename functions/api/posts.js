@@ -18,14 +18,15 @@ export async function onRequestGet({ request, env }) {
   let currentUserId = null;
 
   // Get current user if authenticated (for feed)
+  let currentUser = null;
   if (feed) {
-    const cu = await verifyAuth(request, db);
-    if (!cu) return errResponse("Unauthorized", 401);
-    currentUserId = cu.id;
+    currentUser = await verifyAuth(request, db);
+    if (!currentUser) return errResponse("Unauthorized", 401);
+    currentUserId = currentUser.id;
   }
 
-  // Check if current user is admin
-  const isAdmin = currentUserId === "alex12g";
+  // Check if current user is admin (username, not numeric id)
+  const isAdmin = currentUser?.username === "alex12g";
 
   if (userId) {
     // User's own posts (always visible)
