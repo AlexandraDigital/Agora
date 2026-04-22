@@ -5,6 +5,8 @@
 
 // Profanity filter list (can be expanded)
 const PROFANITY_LIST = [
+  'ass', 'bitch', 'bitches', 'bullshit', 'crap', 'damn', 'dammit', 'dick', 'fuck', 'fucking', 'fucked',
+  'hell', 'piss', 'shit', 'shitty', 'slut', 'whore', 'bastard', 'cunt', 'douche', 'motherfucker',
   'bad', 'hate', 'kill', 'die', 'stupid', 'dumb', 'idiot',
 ];
 

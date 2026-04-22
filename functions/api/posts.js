@@ -18,19 +18,46 @@ export async function onRequestGet({ request, env }) {
 
   if (userId) {
     rows = await db.prepare(
-      "SELECT * FROM posts WHERE authorId=? ORDER BY timestamp DESC LIMIT 100"
+      "SELECT * FROM posts WHERE authorId=? AND isVisible=1 ORDER BY timestamp DESC LIMIT 100"
     ).bind(userId).all();
   } else if (feed) {
     const cu = await verifyAuth(request, db);
     if (!cu) return errResponse("Unauthorized", 401);
-    rows = await db.prepare(`
+    
+    // Get blocked users
+    const blocked = await db.prepare(
+      "SELECT blockedId FROM user_blocks WHERE blockerId=?"
+    ).bind(cu.id).all();
+    const blockedIds = blocked.results.map(r => r.blockedId);
+    const blockedPlaceholders = blockedIds.length ? blockedIds.map(() => "?").join(",") : "0";
+    
+    // Get muted users
+    const muted = await db.prepare(
+      "SELECT mutedId FROM user_mutes WHERE muterId=?"
+    ).bind(cu.id).all();
+    const mutedIds = muted.results.map(r => r.mutedId);
+    
+    let query = `
       SELECT p.* FROM posts p
-      WHERE p.authorId = ?
-         OR p.authorId IN (SELECT followingId FROM follows WHERE followerId = ?)
-      ORDER BY p.timestamp DESC LIMIT 100
-    `).bind(cu.id, cu.id).all();
+      WHERE p.isVisible = 1
+        AND (p.authorId = ? OR p.authorId IN (SELECT followingId FROM follows WHERE followerId = ?))
+    `;
+    
+    if (blockedIds.length > 0) {
+      query += ` AND p.authorId NOT IN (${blockedPlaceholders})`;
+    }
+    
+    query += ` ORDER BY p.timestamp DESC LIMIT 100`;
+    
+    const params = [cu.id, cu.id, ...blockedIds];
+    rows = await db.prepare(query).bind(...params).all();
+    
+    // Filter out muted users' posts
+    rows.results = rows.results.filter(r => !mutedIds.includes(r.authorId));
   } else {
-    rows = await db.prepare("SELECT * FROM posts ORDER BY timestamp DESC LIMIT 100").all();
+    rows = await db.prepare(
+      "SELECT * FROM posts WHERE isVisible=1 ORDER BY timestamp DESC LIMIT 100"
+    ).all();
   }
 
   const posts = await Promise.all(rows.results.map(r => shapePost(r, db)));
@@ -72,20 +99,6 @@ export async function onRequestPost({ request, env }) {
 
     // Auto-delete high-severity content
     if (severity === "high") {
-      // Log the flag
-      await db.prepare(
-        "INSERT INTO moderation_flags (id,postId,userId,severity,reason,resolved,action,timestamp) VALUES (?,?,?,?,?,?,?,?)"
-      ).bind(
-        generateUUID(),
-        generateUUID(), // temp post id for record
-        cu.id,
-        "high",
-        moderationReason,
-        true,
-        "auto_deleted",
-        Date.now()
-      ).run();
-      
       return errResponse(`Content rejected: ${moderationReason}`, 400);
     }
 
@@ -94,7 +107,7 @@ export async function onRequestPost({ request, env }) {
     
     // Insert post
     await db.prepare(
-      "INSERT INTO posts (id,authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp) VALUES (?,?,?,?,?,?,?,?)"
+      "INSERT INTO posts (id,authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp,isModerated,moderationReason,isVisible) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
     ).bind(
       postId,
       cu.id, content.trim(),
@@ -102,22 +115,22 @@ export async function onRequestPost({ request, env }) {
       media?.thumb ?? null,
       media?.videoUrl ?? null,
       url ?? null,
-      ts
+      ts,
+      severity === "medium" ? 1 : 0,
+      severity === "medium" ? moderationReason : null,
+      1
     ).run();
 
-    // Flag if medium severity
+    // Flag if medium severity (for manual review)
     if (severity === "medium") {
       await db.prepare(
-        "INSERT INTO moderation_flags (id,postId,userId,severity,reason,resolved,action,timestamp) VALUES (?,?,?,?,?,?,?,?)"
+        "INSERT INTO moderation_flags (postId,flagType,reason,autoAction,isReviewed) VALUES (?,?,?,?,?)"
       ).bind(
-        generateUUID(),
         postId,
-        cu.id,
-        "medium",
+        "content_flagged",
         moderationReason,
-        false,
-        "flagged_for_review",
-        ts
+        "manual_review",
+        0
       ).run();
     }
 
@@ -125,7 +138,16 @@ export async function onRequestPost({ request, env }) {
       "SELECT * FROM posts WHERE id=?"
     ).bind(postId).first();
     if (!row) return errResponse("Post created but could not be retrieved", 500);
-    return jsonResponse(await shapePost(row, db), 201);
+    
+    const post = await shapePost(row, db);
+    if (severity === "medium") {
+      post.moderation = {
+        flagged: true,
+        reason: moderationReason,
+      };
+    }
+    
+    return jsonResponse(post, 201);
   } catch (err) {
     return errResponse("Post failed: " + err.message, 500);
   }
@@ -133,40 +155,29 @@ export async function onRequestPost({ request, env }) {
 
 export async function onRequestDelete({ request, env }) {
   try {
-    console.log("DELETE handler called");
-    console.log("Request URL:", request.url);
-    console.log("Request method:", request.method);
-    
     const db = env.DB;
     const cu = await verifyAuth(request, db);
     if (!cu) return errResponse("Unauthorized", 401);
 
-    // Extract post ID from URL path: /api/posts/{id}
     const url = new URL(request.url);
     const pathParts = url.pathname.split("/");
     const postId = pathParts[pathParts.length - 1];
     
-    console.log("Path parts:", pathParts);
-    console.log("Extracted postId:", postId);
-    
     if (!postId) return errResponse("Post ID required", 400);
 
-    // Verify the post belongs to the current user
     const post = await db.prepare(
       "SELECT * FROM posts WHERE id=?"
     ).bind(postId).first();
 
-    if (!post) return errResponse("Post not found (ID: " + postId + ")", 404);
+    if (!post) return errResponse("Post not found", 404);
     if (post.authorId !== cu.id) return errResponse("Forbidden", 403);
 
-    // Delete the post
     await db.prepare(
       "DELETE FROM posts WHERE id=?"
     ).bind(postId).run();
 
     return jsonResponse({ success: true });
   } catch (err) {
-    console.error("DELETE error:", err);
     return errResponse("Delete failed: " + err.message, 500);
   }
 }

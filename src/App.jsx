@@ -23,8 +23,6 @@ const T = {
 };
 
 // ── API config ───────────────────────────────────────────────────
-// In development: set VITE_API_URL in a .env.local file.
-// In production:  set VITE_API_URL in Cloudflare Pages environment variables.
 const API = "";
 
 const authHeaders = (token) => ({
@@ -88,19 +86,17 @@ const extractFrame = (blobUrl) => new Promise(resolve => {
   v.onerror = () => resolve(null);
 });
 
-// Allowed MIME types and their magic-byte signatures (hex, checked at the start of the file)
 const ALLOWED_TYPES = {
   "image/jpeg":  { sig: [[0xFF,0xD8,0xFF]], ext: ["jpg","jpeg"] },
   "image/png":   { sig: [[0x89,0x50,0x4E,0x47]], ext: ["png"] },
   "image/gif":   { sig: [[0x47,0x49,0x46,0x38]], ext: ["gif"] },
-  "image/webp":  { sig: null, ext: ["webp"] }, // RIFF container — skip magic check
+  "image/webp":  { sig: null, ext: ["webp"] },
   "video/mp4":   { sig: null, ext: ["mp4","m4v"] },
   "video/webm":  { sig: [[0x1A,0x45,0xDF,0xA3]], ext: ["webm"] },
   "video/ogg":   { sig: [[0x4F,0x67,0x67,0x53]], ext: ["ogv","ogg"] },
   "video/quicktime": { sig: null, ext: ["mov"] },
 };
 
-// Read the first N bytes of a File as a Uint8Array
 const readHeader = (file, n=12) => new Promise(resolve => {
   const r = new FileReader();
   r.onload = e => resolve(new Uint8Array(e.target.result));
@@ -108,27 +104,20 @@ const readHeader = (file, n=12) => new Promise(resolve => {
   r.readAsArrayBuffer(file.slice(0, n));
 });
 
-// Check if bytes start with any of the given signatures
 const matchesSig = (bytes, sigs) =>
   sigs.some(sig => sig.every((b, i) => bytes[i] === b));
 
 const moderateMedia = async (file) => {
   try {
-    // 1. MIME type must be in the allowlist
     const meta = ALLOWED_TYPES[file.type];
     if (!meta) return { ok: false, reason: `File type "${file.type}" is not allowed. Upload JPEG, PNG, GIF, WebP, MP4, WebM, or MOV.` };
-
-    // 2. Extension must match the declared MIME type
     const ext = file.name.split(".").pop().toLowerCase();
     if (!meta.ext.includes(ext)) return { ok: false, reason: `File extension ".${ext}" doesn't match its declared type. Please re-save and try again.` };
-
-    // 3. Magic-byte check (where applicable)
     if (meta.sig) {
       const header = await readHeader(file);
       if (!header) return { ok: false, reason: "Could not read the file. Try another." };
       if (!matchesSig(header, meta.sig)) return { ok: false, reason: "File header doesn't match its declared format. The file may be corrupted or mislabeled." };
     }
-
     return { ok: true, reason: "" };
   } catch { return { ok: false, reason: "File check failed — please try again." }; }
 };
@@ -260,7 +249,6 @@ function AvatarCustomizer({ user, token, onSave, onCancel }) {
       <div style={{ background:C.surface, borderRadius:16, padding:24, maxWidth:480, width:"100%", maxHeight:"92vh", overflow:"auto" }}>
         <div style={{ fontSize:17, fontWeight:700, marginBottom:20, fontFamily:T.body, color:C.text }}>Edit Avatar</div>
 
-        {/* Preview */}
         <div style={{ display:"flex", justifyContent:"center", marginBottom:20 }}>
           <div style={{
             width:80, height:80,
@@ -276,7 +264,6 @@ function AvatarCustomizer({ user, token, onSave, onCancel }) {
           </div>
         </div>
 
-        {/* Tabs */}
         <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:20 }}>
           {[["emoji","Emoji"], ["upload","Photo"]].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} style={{ flex:1, background:"none", border:"none", padding:"0 0 10px", fontSize:13, fontWeight:tab===id?600:400, color:tab===id?C.text:C.textMuted, borderBottom:tab===id?`2px solid ${C.accent}`:"2px solid transparent", cursor:"pointer", fontFamily:T.body, marginBottom:-1 }}>{label}</button>
@@ -322,7 +309,6 @@ function AvatarCustomizer({ user, token, onSave, onCancel }) {
           </div>
         )}
 
-        {/* Shape */}
         <div style={{ marginBottom:20 }}>
           <div style={{ fontSize:12, fontWeight:600, color:C.textMuted, marginBottom:8, fontFamily:T.body }}>Shape</div>
           <div style={{ display:"flex", gap:8 }}>
@@ -342,7 +328,6 @@ function AvatarCustomizer({ user, token, onSave, onCancel }) {
     </div>
   );
 }
-
 
 function Av({ user, size=36 }) {
   const borderRadius = user.avatarStyle === "square" ? "6px" : user.avatarStyle === "rounded" ? "20%" : "50%";
@@ -370,7 +355,74 @@ function Av({ user, size=36 }) {
   );
 }
 
-function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError }) {
+function ReportModal({ postId, onClose, onSubmit, token }) {
+  const [reason, setReason] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const reasons = [
+    "Hate speech or violence",
+    "Harassment or bullying",
+    "Spam or scam",
+    "Sexual content",
+    "Misinformation",
+    "Other",
+  ];
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await api.post("/api/moderation/report", { postId, reason }, token);
+      if (res.error) {
+        setError(res.error);
+        return;
+      }
+      setSubmitted(true);
+      setTimeout(() => onClose(), 2000);
+    } catch (err) {
+      setError("Report failed: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }}>
+      <div style={{ background:C.surface, padding:"24px", borderRadius:12, maxWidth:400, width:"90%", boxShadow:"0 4px 6px rgba(0,0,0,0.1)" }}>
+        <h2 style={{ fontSize:18, fontWeight:600, marginBottom:16, fontFamily:T.body, color:C.text }}>Report Post</h2>
+        {submitted ? (
+          <p style={{ color:C.success, fontWeight:600, fontFamily:T.body }}>Thank you for your report. Our team will review it.</p>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <p style={{ fontSize:14, marginBottom:12, fontFamily:T.body, color:C.text }}>Why are you reporting this post?</p>
+            <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:16 }}>
+              {reasons.map((r) => (
+                <label key={r} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontFamily:T.body, fontSize:14, color:C.text }}>
+                  <input
+                    type="radio"
+                    name="reason"
+                    value={r}
+                    onChange={(e) => setReason(e.target.value)}
+                  />
+                  {r}
+                </label>
+              ))}
+            </div>
+            {error && <p style={{ color:"#d63031", fontSize:13, marginBottom:12, fontFamily:T.body }}>{error}</p>}
+            <div style={{ display:"flex", gap:10 }}>
+              <button type="button" onClick={onClose} style={{ flex:1, background:C.bg, color:C.text, border:`1px solid ${C.border}`, borderRadius:8, padding:10, fontSize:13, cursor:"pointer", fontFamily:T.body }}>Cancel</button>
+              <button type="submit" disabled={!reason || loading} style={{ flex:1, background:(reason&&!loading)?C.accent:C.border, color:(reason&&!loading)?"#fff":C.textMuted, border:"none", borderRadius:8, padding:10, fontSize:13, cursor:(reason&&!loading)?"pointer":"default", fontFamily:T.body, fontWeight:500 }}>{loading?"Reporting…":"Report"}</button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError, token }) {
   const author = users.find(u=>u.id===post.authorId);
   const [open, setOpen] = useState(false);
   const [ct, setCt] = useState("");
@@ -378,6 +430,8 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
   const [playingUrl, setPlayingUrl] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  
   if (!author) return null;
   const liked = post.likes.includes(cu.id);
   const isAuthor = post.authorId === cu.id;
@@ -421,16 +475,19 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
             <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>{fmtTime(post.timestamp)}</div>
           </div>
         </div>
-        {isAuthor && (
-          <div style={{ position:"relative" }}>
-            <button onClick={()=>setShowDeleteMenu(!showDeleteMenu)} disabled={deleting} style={{ background:"none", border:"none", cursor:deleting?"default":"pointer", color:C.textMuted, fontSize:16, padding:"0 4px", lineHeight:1, opacity:deleting?0.5:1 }}>⋯</button>
-            {showDeleteMenu && (
-              <div style={{ position:"absolute", top:"100%", right:0, background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, marginTop:4, zIndex:10, minWidth:140, boxShadow:"0 2px 8px rgba(0,0,0,0.1)" }}>
+        <div style={{ position:"relative" }}>
+          <button onClick={()=>setShowDeleteMenu(!showDeleteMenu)} disabled={deleting} style={{ background:"none", border:"none", cursor:deleting?"default":"pointer", color:C.textMuted, fontSize:16, padding:"0 4px", lineHeight:1, opacity:deleting?0.5:1 }}>⋯</button>
+          {showDeleteMenu && (
+            <div style={{ position:"absolute", top:"100%", right:0, background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, marginTop:4, zIndex:10, minWidth:140, boxShadow:"0 2px 8px rgba(0,0,0,0.1)" }}>
+              {isAuthor && (
                 <button onClick={handleDeletePost} disabled={deleting} style={{ width:"100%", background:"none", border:"none", cursor:deleting?"default":"pointer", color:deleting?C.border:"#d63031", fontSize:13, padding:"10px 12px", textAlign:"left", fontFamily:T.body, borderRadius:8, transition:"background 0.2s" }} onMouseEnter={e=>!deleting&&(e.target.style.background="#fff5f5")} onMouseLeave={e=>!deleting&&(e.target.style.background="none")}>{deleting?"Deleting…":"Delete post"}</button>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+              {!isAuthor && (
+                <button onClick={() => setShowReportModal(true)} style={{ width:"100%", background:"none", border:"none", cursor:"pointer", color:C.accent, fontSize:13, padding:"10px 12px", textAlign:"left", fontFamily:T.body, borderRadius:8, transition:"background 0.2s" }} onMouseEnter={e=>e.target.style.background=C.accentLight} onMouseLeave={e=>e.target.style.background="none"}>Report</button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <div style={{ padding:"0 16px 14px", fontSize:15, lineHeight:1.65, whiteSpace:"pre-wrap", fontFamily:T.body, color:C.text }}>
         <RichText content={post.content} />
@@ -573,11 +630,12 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
           </div>
         </div>
       )}
+      {showReportModal && <ReportModal postId={post.id} onClose={() => setShowReportModal(false)} token={token} onSubmit={() => {}} />}
     </div>
   );
 }
 
-function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError }) {
+function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError, token }) {
   const feed = [...posts].sort((a,b)=>b.timestamp-a.timestamp);
   return (
     <div>
@@ -591,7 +649,7 @@ function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteCom
           <div style={{ fontSize:16, fontWeight:600, marginBottom:8, fontFamily:T.body }}>Your feed is empty</div>
           <div style={{ fontSize:14, color:C.textMuted, fontFamily:T.body }}>Follow people from Explore to see their posts here.</div>
         </div>
-      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError}/>)}
+      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} token={token}/>)}
     </div>
   );
 }
@@ -641,7 +699,7 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
                 <span style={{ fontSize:20, fontWeight:700, fontFamily:T.brand, color:C.accent }}>{selTag}</span>
                 <button onClick={()=>setSelTag(null)} style={{ background:C.border, border:"none", borderRadius:20, padding:"3px 10px", fontSize:11, cursor:"pointer", color:C.textMuted, fontFamily:T.body }}>✕ clear</button>
               </div>
-              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={()=>{}} onComment={()=>{}} onDelete={()=>{}} onDeleteComment={()=>{}} onUser={onUser}/>)}
+              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={()=>{}} onComment={()=>{}} onDelete={()=>{}} onDeleteComment={()=>{}} onUser={onUser} token={""} />)}
               <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:16, marginTop:8 }}>
                 <div style={{ fontSize:12, color:C.textMuted, marginBottom:12, fontFamily:T.body }}>All tags</div>
               </div>
@@ -661,12 +719,56 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
   );
 }
 
-function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar }) {
+function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, token }) {
   const user = users.find(u=>u.id===uid);
+  const [blockedUsers, setBlockedUsers] = useState([]);
+  const [mutedUsers, setMutedUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  
   if (!user) return null;
   const isOwn = uid===cu.id;
   const following = cu.following.includes(uid);
+  const isBlocked = blockedUsers.includes(uid);
+  const isMuted = mutedUsers.includes(uid);
   const userPosts = posts.filter(p=>p.authorId===uid).sort((a,b)=>b.timestamp-a.timestamp);
+  
+  const toggleBlock = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const endpoint = isBlocked ? "/api/moderation/unblock" : "/api/moderation/block";
+      const res = await api.post(endpoint, { userId: uid }, token);
+      if (res.error) {
+        setError(res.error);
+        return;
+      }
+      setBlockedUsers(prev => isBlocked ? prev.filter(id => id !== uid) : [...prev, uid]);
+    } catch (err) {
+      setError("Block action failed: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleMute = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const endpoint = isMuted ? "/api/moderation/unmute" : "/api/moderation/mute";
+      const res = await api.post(endpoint, { userId: uid }, token);
+      if (res.error) {
+        setError(res.error);
+        return;
+      }
+      setMutedUsers(prev => isMuted ? prev.filter(id => id !== uid) : [...prev, uid]);
+    } catch (err) {
+      setError("Mute action failed: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div>
       <button onClick={onBack} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:14, padding:"0 0 16px", fontFamily:T.body, display:"flex", alignItems:"center", gap:4 }}>← back</button>
@@ -695,18 +797,56 @@ function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComm
             </div>
           ))}
         </div>
+        {!isOwn && (
+          <div style={{ marginTop:16, paddingTop:16, borderTop:`1px solid ${C.border}`, display:"flex", gap:10 }}>
+            <button onClick={toggleMute} disabled={loading} style={{ flex:1, background:isMuted?C.accentLight:C.border, color:isMuted?C.accent:C.textMuted, border:`1px solid ${isMuted?C.accent:C.border}`, borderRadius:8, padding:"10px", fontSize:13, cursor:loading?"default":"pointer", fontFamily:T.body, fontWeight:500, opacity:loading?0.5:1 }}>{loading?"…":isMuted?"✓ Muted":"Mute"}</button>
+            <button onClick={toggleBlock} disabled={loading} style={{ flex:1, background:isBlocked?"#fdecea":C.border, color:isBlocked?"#d63031":C.textMuted, border:`1px solid ${isBlocked?"#f4b8b4":C.border}`, borderRadius:8, padding:"10px", fontSize:13, cursor:loading?"default":"pointer", fontFamily:T.body, fontWeight:500, opacity:loading?0.5:1 }}>{loading?"…":isBlocked?"✓ Blocked":"Block"}</button>
+          </div>
+        )}
+        {error && <div style={{ marginTop:12, padding:"10px", background:"#fdecea", color:"#d63031", borderRadius:8, fontSize:12, fontFamily:T.body }}>{error}</div>}
       </div>
       {userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
-      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError}/>)}
+      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} token={token}/>)}
     </div>
   );
 }
 
-function SettingsScreen({ cu, onLogout, onBack, onUpdate }) {
+function SettingsScreen({ cu, onLogout, onBack, onUpdate, token }) {
   const [dn, setDn] = useState(cu.displayName);
   const [bio, setBio] = useState(cu.bio||"");
   const [saved, setSaved] = useState(false);
+  const [prefs, setPrefs] = useState({ strictMode: false, filterSlurs: false, filterViolence: false });
+  const [prefsSaved, setPrefsSaved] = useState(false);
+  const [loadingPrefs, setLoadingPrefs] = useState(false);
+  
+  useEffect(() => {
+    const fetchPrefs = async () => {
+      setLoadingPrefs(true);
+      const res = await api.get("/api/moderation/preferences", token);
+      if (!res.error) {
+        setPrefs({
+          strictMode: !!res.strictMode,
+          filterSlurs: !!res.filterSlurs,
+          filterViolence: !!res.filterViolence,
+        });
+      }
+      setLoadingPrefs(false);
+    };
+    fetchPrefs();
+  }, [token]);
+  
   const save = () => { onUpdate({ displayName:dn, bio }); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  
+  const savePrefs = async () => {
+    setLoadingPrefs(true);
+    const res = await api.post("/api/moderation/preferences", prefs, token);
+    if (!res.error) {
+      setPrefsSaved(true);
+      setTimeout(() => setPrefsSaved(false), 2000);
+    }
+    setLoadingPrefs(false);
+  };
+  
   const privacyItems = [
     ["No data collection","We collect zero analytics or usage data"],
     ["No tracking","No cookies, no fingerprinting, no ad profiles"],
@@ -714,6 +854,7 @@ function SettingsScreen({ cu, onLogout, onBack, onUpdate }) {
     ["No AI sorting","No AI recommendations, no engagement ranking"],
     ["Your data, your account","Data is stored securely on our servers and never sold"],
   ];
+  
   return (
     <div>
       <button onClick={onBack} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:14, padding:"0 0 16px", fontFamily:T.body }}>← back</button>
@@ -724,6 +865,30 @@ function SettingsScreen({ cu, onLogout, onBack, onUpdate }) {
           <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Bio</label><input value={bio} onChange={e=>setBio(e.target.value)} style={inp}/></div>
           <button onClick={save} style={{ background:saved?C.success:C.text, color:"#fff", border:"none", borderRadius:8, padding:"10px 0", fontSize:14, cursor:"pointer", fontFamily:T.body }}>{saved?"✓ Saved":"Save changes"}</button>
         </div>
+      </div>
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
+        <div style={{ fontWeight:600, fontSize:16, marginBottom:14, fontFamily:T.body }}>Content Safety Preferences</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          {[
+            { key: "strictMode", label: "Strict Mode", desc: "All images will require your approval before displaying" },
+            { key: "filterSlurs", label: "Filter Profanity", desc: "Hide posts containing inappropriate language" },
+            { key: "filterViolence", label: "Filter Violent Content", desc: "Hide posts containing violent or hateful language" },
+          ].map(({ key, label, desc }) => (
+            <label key={key} style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"10px", background:C.bg, borderRadius:8, cursor:"pointer" }}>
+              <input
+                type="checkbox"
+                checked={prefs[key]}
+                onChange={(e) => setPrefs({ ...prefs, [key]: e.target.checked })}
+                style={{ marginTop:3 }}
+              />
+              <div>
+                <strong style={{ display:"block", fontFamily:T.body, fontSize:13, color:C.text }}>{label}</strong>
+                <p style={{ fontSize:12, color:C.textMuted, margin:"2px 0 0", fontFamily:T.body }}>{desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+        <button onClick={savePrefs} disabled={loadingPrefs} style={{ marginTop:14, background:prefsSaved?C.success:C.accent, color:"#fff", border:"none", borderRadius:8, padding:"10px 0", fontSize:14, cursor:loadingPrefs?"default":"pointer", fontFamily:T.body, width:"100%" }}>{loadingPrefs?"Saving…":prefsSaved?"✓ Saved":"Save Preferences"}</button>
       </div>
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
         <div style={{ fontWeight:600, fontSize:16, marginBottom:14, fontFamily:T.body }}>Privacy & security</div>
@@ -748,7 +913,7 @@ function ComposeModal({ cu, token, onPost, onClose }) {
   const [text, setText] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [file, setFile] = useState(null);
-  const [modStatus, setModStatus] = useState(null); // null | 'scanning' | 'ok' | 'rejected' | 'error'
+  const [modStatus, setModStatus] = useState(null);
   const [modReason, setModReason] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
@@ -779,7 +944,6 @@ function ComposeModal({ cu, token, onPost, onClose }) {
         URL.revokeObjectURL(blobUrl);
       }
     } else {
-      // Video - extract thumb and store raw file for upload
       const thumb = await extractFrame(blobUrl);
       setFile({ blobUrl, type: "video", thumb, mime: f.type, raw: f });
       setModStatus("ok");
@@ -814,7 +978,6 @@ function ComposeModal({ cu, token, onPost, onClose }) {
       let mediaPayload = null;
       if (file) {
         if (file.type === "video") {
-          // Upload video to KV
           const reader = new FileReader();
           const base64 = await new Promise((res, rej) => {
             reader.onload = e => res(e.target.result.split(",")[1]);
@@ -971,7 +1134,6 @@ function AuthScreen({ onLogin, onSignup }) {
             {err && <div style={{ color:C.accent, fontSize:13, fontFamily:T.body }}>{err}</div>}
             <button onClick={submit} disabled={busy} style={{ background:busy?C.border:C.text, color:busy?C.textMuted:"#fff", border:"none", borderRadius:8, padding:"12px 0", fontSize:15, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:T.body, marginTop:4 }}>{busy?"Please wait…":mode==="login"?"Sign in":"Create account"}</button>
           </div>
-
         </div>
         <div style={{ textAlign:"center", marginTop:20, fontSize:12, color:C.textMuted, fontFamily:T.body, lineHeight:1.7 }}>
           No tracking. No algorithm. No ads.
@@ -982,8 +1144,8 @@ function AuthScreen({ onLogin, onSignup }) {
 }
 
 export default function Agora() {
-  const [cu, setCu] = useState(null);         // current user object
-  const [token, setToken] = useState(null);   // auth token
+  const [cu, setCu] = useState(null);
+  const [token, setToken] = useState(null);
   const [users, setUsers] = useState([]);
   const [posts, setPosts] = useState([]);
   const [screen, setScreen] = useState("feed");
@@ -992,7 +1154,6 @@ export default function Agora() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
-  // Restore session from localStorage (token + user only — posts/users come from API)
   useEffect(() => {
     const savedToken = localStorage.getItem("ag_token");
     const savedUser  = localStorage.getItem("ag_cu");
@@ -1003,7 +1164,6 @@ export default function Agora() {
     setLoading(false);
   }, []);
 
-  // Fetch users + posts whenever we have a session
   useEffect(() => {
     if (!cu || !token) return;
     const load = async () => {
@@ -1047,7 +1207,6 @@ export default function Agora() {
 
   const follow = async (uid) => {
     await api.post(`/api/follow/${uid}`, {}, token);
-    // Optimistic update
     const isFollowing = cu.following.includes(uid);
     const newCu = { ...cu, following: isFollowing ? cu.following.filter(id=>id!==uid) : [...cu.following, uid] };
     setCu(newCu);
@@ -1060,7 +1219,6 @@ export default function Agora() {
 
   const like = async (pid) => {
     await api.post(`/api/posts/${pid}/like`, {}, token);
-    // Optimistic update
     setPosts(prev => prev.map(p => {
       if (p.id !== pid) return p;
       const liked = p.likes.includes(cu.id);
@@ -1079,13 +1237,11 @@ export default function Agora() {
 
   const deletePost = async (pid) => {
     const originalPosts = posts;
-    // Optimistic update
     setPosts(prev => prev.filter(p => p.id !== pid));
     try {
       const res = await api.delete(`/api/posts/${pid}`, token);
       console.log("Delete response:", res);
       if (res.error) {
-        // Revert on error
         console.error("Delete error:", res.error);
         setPosts(originalPosts);
         setToast({ message: res.error, type: "error" });
@@ -1101,7 +1257,6 @@ export default function Agora() {
 
   const deleteComment = async (pid, cid) => {
     const originalPosts = posts;
-    // Optimistic update
     setPosts(prev => prev.map(p => {
       if (p.id !== pid) return p;
       return { ...p, comments: p.comments.filter(c => c.id !== cid) };
@@ -1109,7 +1264,6 @@ export default function Agora() {
     try {
       const res = await api.delete(`/api/posts/${pid}/comment/${cid}`, token);
       if (res.error) {
-        // Revert on error
         setPosts(originalPosts);
         setToast({ message: "Failed to delete comment. Please try again.", type: "error" });
         throw new Error(res.error);
@@ -1196,11 +1350,11 @@ export default function Agora() {
       <div style={{ maxWidth:600, margin:"0 auto", padding:"20px 16px 100px" }}>
         {screen==="feed" && <>
           <PWAInstallButton />
-          <FeedScreen posts={posts} users={users} cu={cu} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})}/>
+          <FeedScreen posts={posts} users={users} cu={cu} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} token={token}/>
         </>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)}/>}
-        {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} token={token}/>}
+        {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} token={token}/>}
       </div>
 
       <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.surface, borderTop:`1px solid ${C.border}`, display:"flex", padding:"8px 0 18px", zIndex:50 }}>
