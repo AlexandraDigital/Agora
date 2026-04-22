@@ -1,84 +1,70 @@
 // Service Worker for Agora PWA
-const CACHE_NAME = "agora-v1";
-const urlsToCache = [
-  "/",
-  "/index.html",
-  "/manifest.json"
-];
+// IMPORTANT: Change CACHE_VERSION on every deploy to bust stale caches.
+const CACHE_VERSION = "agora-v2";
+const ASSET_CACHE   = `${CACHE_VERSION}-assets`;
 
-// Install event - cache essential files
+// Install: skip waiting so new SW activates immediately
 self.addEventListener("install", (event) => {
-  console.log("Service Worker installing...");
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log("Cache opened");
-      return cache.addAll(urlsToCache).catch((err) => {
-        console.log("Cache addAll error:", err);
-        // Don't fail install if some resources are not available
-      });
-    })
-  );
+  console.log("Service Worker installing:", CACHE_VERSION);
   self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate: delete ALL old caches so stale JS bundles are never served
 self.addEventListener("activate", (event) => {
-  console.log("Service Worker activating...");
+  console.log("Service Worker activating:", CACHE_VERSION);
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
+    caches.keys().then((cacheNames) =>
+      Promise.all(
         cacheNames
-          .filter((cacheName) => cacheName !== CACHE_NAME)
-          .map((cacheName) => {
-            console.log("Deleting cache:", cacheName);
-            return caches.delete(cacheName);
+          .filter((name) => name !== ASSET_CACHE)
+          .map((name) => {
+            console.log("Deleting old cache:", name);
+            return caches.delete(name);
           })
-      );
-    })
+      )
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
 self.addEventListener("fetch", (event) => {
-  // Skip non-GET requests
-  if (event.request.method !== "GET") {
-    return;
-  }
+  if (event.request.method !== "GET") return;
 
-  // Skip API requests - always go to network
-  if (event.request.url.includes("/api/")) {
-    return;
-  }
+  const url = new URL(event.request.url);
 
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      if (response) {
-        console.log("Serving from cache:", event.request.url);
-        return response;
-      }
+  // Always go to network for API calls
+  if (url.pathname.startsWith("/api/")) return;
 
-      return fetch(event.request)
+  // HTML pages: network-first so the app shell is always fresh after a deploy.
+  // Falls back to cache only if offline.
+  if (event.request.headers.get("accept")?.includes("text/html") ||
+      url.pathname === "/" || url.pathname.endsWith(".html")) {
+    event.respondWith(
+      fetch(event.request)
         .then((response) => {
-          // Don't cache non-successful responses
-          if (!response || response.status !== 200 || response.type === "error") {
-            return response;
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(ASSET_CACHE).then((cache) => cache.put(event.request, clone));
           }
-
-          // Clone the response
-          const responseToCache = response.clone();
-
-          // Cache successful responses
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-
           return response;
         })
-        .catch(() => {
-          // Network request failed, try to return a cached version
-          return caches.match("/index.html");
-        });
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Static assets (JS, CSS, images): cache-first for performance.
+  // These have content-hashed filenames so stale files are not an issue.
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(event.request).then((response) => {
+        if (response && response.status === 200 && response.type !== "error") {
+          const clone = response.clone();
+          caches.open(ASSET_CACHE).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => caches.match("/index.html"));
     })
   );
 });
+
