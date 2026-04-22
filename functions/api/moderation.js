@@ -1,236 +1,182 @@
-/**
- * Content moderation utilities for Agora
- * Free, open-source approach using pattern matching and heuristics
- */
+import { verifyAuth, jsonResponse, errResponse } from "./_helpers.js";
 
-// Profanity filter list (can be expanded)
-const PROFANITY_LIST = [
-  'bad', 'hate', 'kill', 'die', 'stupid', 'dumb', 'idiot',
-];
-
-// Spam patterns - Price patterns, URL patterns, promotional content, excessive caps
-const SPAM_PATTERNS = [
-  /(?:follow|like|click|buy|subscribe|visit|link)\s*(?:my|for|to|the)\s*(?:profile|page|site|store)/gi,
-  /(?:\$+\d+|[\d]+\$+)/g,
-  /(?:http|https)?\s*:?\/+/gi,
-  /[A-Z]{3,}\s+[A-Z]{3,}/g,
-];
-
-// Hate speech indicators (basic list)
-const HATE_PATTERNS = [
-  /hate[s]?\s*(people|group|race|religion|gender)/gi,
-  /racist|sexist|homophobic/gi,
-];
-
-/**
- * Detect inappropriate text content
- * Returns: { flagged: boolean, reasons: string[], severity: 'low'|'medium'|'high' }
- */
-export function detectTextContent(text, userPreferences = {}) {
-  const reasons = [];
-  let severity = 'low';
-
-  if (!text) return { flagged: false, reasons, severity };
-
-  const lowerText = text.toLowerCase();
-
-  // Check profanity
-  if (userPreferences.filterSlurs !== false) {
-    for (const word of PROFANITY_LIST) {
-      if (lowerText.includes(word)) {
-        reasons.push(`Contains inappropriate language: "${word}"`);
-        severity = 'medium';
-      }
-    }
-  }
-
-  // Check spam patterns
-  for (const pattern of SPAM_PATTERNS) {
-    if (pattern.test(text)) {
-      reasons.push('Appears to contain spam or promotional content');
-      severity = Math.max(severity === 'high' ? 'high' : 'medium', severity);
-    }
-  }
-
-  // Check hate speech (if user preference enabled)
-  if (userPreferences.filterViolence !== false) {
-    for (const pattern of HATE_PATTERNS) {
-      if (pattern.test(text)) {
-        reasons.push('Contains hate speech or violent language');
-        severity = 'high';
-      }
-    }
-  }
-
-  // Check for excessive caps
-  const capsRatio = (text.match(/[A-Z]/g) || []).length / text.length;
-  if (capsRatio > 0.6 && text.length > 20) {
-    reasons.push('Excessive capitalization');
-    severity = severity === 'high' ? 'high' : 'low';
-  }
-
-  return {
-    flagged: reasons.length > 0,
-    reasons,
-    severity,
-  };
+// Simple UUID v4 generator
+function generateUUID() {
+  return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
+    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4))))
+    .toString(16)
+  );
 }
 
 /**
- * Detect inappropriate images
- * Uses basic heuristics: file format validation, size checks
- * For production, consider: Cloudflare AI, Google Vision API, or similar
+ * Report a post
+ * POST /api/moderation/report
+ * Body: { postId, reason }
  */
-export async function detectImageContent(imageData, userPreferences = {}) {
-  const reasons = [];
-  let severity = 'low';
-
-  if (!imageData) return { flagged: false, reasons, severity };
-
+export async function onRequestPost({ request, env }) {
   try {
-    // If it's a base64 data URL, we can do basic analysis
-    if (imageData.startsWith('data:image')) {
-      const base64 = imageData.split(',')[1];
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
+    const db = env.DB;
+    const cu = await verifyAuth(request, db);
+    if (!cu) return errResponse("Unauthorized", 401);
 
-      // Basic JPEG/PNG validation
-      const isJpeg = bytes[0] === 0xFF && bytes[1] === 0xD8;
-      const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
-      
-      if (!isJpeg && !isPng) {
-        reasons.push('Invalid or suspicious image format');
-        severity = 'medium';
-      }
+    const { pathname } = new URL(request.url);
+    const body = await request.json();
 
-      // Size heuristics
-      if (bytes.length < 1000) {
-        reasons.push('Image file suspiciously small');
-        severity = 'low';
-      }
+    // Handle report endpoint
+    if (pathname.endsWith("/report")) {
+      const { postId, reason } = body;
+      if (!postId) return errResponse("Post ID required", 400);
+      if (!reason?.trim()) return errResponse("Reason required", 400);
+
+      // Check if post exists
+      const post = await db.prepare(
+        "SELECT * FROM posts WHERE id = ?"
+      ).bind(postId).first();
+      
+      if (!post) return errResponse("Post not found", 404);
+
+      // Prevent self-reporting (optional)
+      // if (post.authorId === cu.id) return errResponse("Cannot report own posts", 400);
+
+      // Check for duplicate reports from same user
+      const existing = await db.prepare(
+        "SELECT * FROM post_reports WHERE postId = ? AND reportedBy = ?"
+      ).bind(postId, cu.id).first();
+
+      if (existing) return errResponse("Already reported this post", 400);
+
+      // Insert report
+      const reportId = generateUUID();
+      await db.prepare(
+        "INSERT INTO post_reports (id, postId, reportedBy, reason, timestamp) VALUES (?, ?, ?, ?, ?)"
+      ).bind(reportId, postId, cu.id, reason.trim(), Date.now()).run();
+
+      return jsonResponse({ success: true, reportId }, 201);
     }
 
-    // For strict mode, flag all images for review
-    if (userPreferences.strictMode) {
-      reasons.push('Image requires review (strict mode enabled)');
-      severity = 'low';
+    // Handle block endpoint
+    if (pathname.match(/\/block\/[^/]+$/)) {
+      const targetUserId = pathname.split("/").pop();
+      if (!targetUserId || targetUserId === "undefined") {
+        return errResponse("User ID required", 400);
+      }
+
+      // Check if user exists
+      const user = await db.prepare(
+        "SELECT * FROM users WHERE id = ?"
+      ).bind(targetUserId).first();
+      
+      if (!user) return errResponse("User not found", 404);
+      if (targetUserId === cu.id) return errResponse("Cannot block yourself", 400);
+
+      // Check if already blocked
+      const existing = await db.prepare(
+        "SELECT * FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = ?"
+      ).bind(cu.id, targetUserId, "block").first();
+
+      if (existing) return jsonResponse({ success: true, message: "Already blocked" });
+
+      // Insert block
+      const modId = generateUUID();
+      await db.prepare(
+        "INSERT INTO user_moderation (id, userId, targetUserId, action, timestamp) VALUES (?, ?, ?, ?, ?)"
+      ).bind(modId, cu.id, targetUserId, "block", Date.now()).run();
+
+      return jsonResponse({ success: true });
     }
+
+    // Handle unblock endpoint
+    if (pathname.match(/\/unblock\/[^/]+$/)) {
+      const targetUserId = pathname.split("/").pop();
+      if (!targetUserId || targetUserId === "undefined") {
+        return errResponse("User ID required", 400);
+      }
+
+      // Remove block
+      await db.prepare(
+        "DELETE FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = ?"
+      ).bind(cu.id, targetUserId, "block").run();
+
+      return jsonResponse({ success: true });
+    }
+
+    // Handle mute endpoint
+    if (pathname.match(/\/mute\/[^/]+$/)) {
+      const targetUserId = pathname.split("/").pop();
+      if (!targetUserId || targetUserId === "undefined") {
+        return errResponse("User ID required", 400);
+      }
+
+      // Check if user exists
+      const user = await db.prepare(
+        "SELECT * FROM users WHERE id = ?"
+      ).bind(targetUserId).first();
+      
+      if (!user) return errResponse("User not found", 404);
+      if (targetUserId === cu.id) return errResponse("Cannot mute yourself", 400);
+
+      // Check if already muted
+      const existing = await db.prepare(
+        "SELECT * FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = ?"
+      ).bind(cu.id, targetUserId, "mute").first();
+
+      if (existing) return jsonResponse({ success: true, message: "Already muted" });
+
+      // Insert mute
+      const modId = generateUUID();
+      await db.prepare(
+        "INSERT INTO user_moderation (id, userId, targetUserId, action, timestamp) VALUES (?, ?, ?, ?, ?)"
+      ).bind(modId, cu.id, targetUserId, "mute", Date.now()).run();
+
+      return jsonResponse({ success: true });
+    }
+
+    // Handle unmute endpoint
+    if (pathname.match(/\/unmute\/[^/]+$/)) {
+      const targetUserId = pathname.split("/").pop();
+      if (!targetUserId || targetUserId === "undefined") {
+        return errResponse("User ID required", 400);
+      }
+
+      // Remove mute
+      await db.prepare(
+        "DELETE FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = ?"
+      ).bind(cu.id, targetUserId, "mute").run();
+
+      return jsonResponse({ success: true });
+    }
+
+    return errResponse("Not found", 404);
   } catch (err) {
-    console.error('Image detection error:', err);
+    console.error("Moderation error:", err);
+    return errResponse("Request failed: " + err.message, 500);
   }
-
-  return {
-    flagged: reasons.length > 0,
-    reasons,
-    severity,
-  };
 }
 
 /**
- * Determine moderation action based on detection results
+ * Get blocked/muted users
+ * GET /api/moderation/list?action=block|mute
  */
-export function determineModerationAction(textDetection, imageDetection) {
-  const allReasons = [...textDetection.reasons, ...imageDetection.reasons];
-  const maxSeverity = ['high', 'medium', 'low'].find(sev =>
-    textDetection.severity === sev || imageDetection.severity === sev
-  ) || 'low';
+export async function onRequestGet({ request, env }) {
+  try {
+    const db = env.DB;
+    const cu = await verifyAuth(request, db);
+    if (!cu) return errResponse("Unauthorized", 401);
 
-  if (maxSeverity === 'high') {
-    return {
-      action: 'auto-delete',
-      reason: allReasons.join('; '),
-      flagged: true,
-    };
-  }
+    const { searchParams } = new URL(request.url);
+    const action = searchParams.get("action");
 
-  if (maxSeverity === 'medium') {
-    return {
-      action: 'flag-review',
-      reason: allReasons.join('; '),
-      flagged: true,
-    };
-  }
-
-  return {
-    action: 'none',
-    reason: null,
-    flagged: false,
-  };
-}
-
-/**
- * Apply user preferences filtering to content
- * Returns modified content or null if user can't see it
- */
-export function applyUserFilters(post, currentUserId, db) {
-  return post;
-}
-
-/**
- * Detect profanity in text
- * Simple wrapper for posts.js integration
- */
-export function detectProfanity(text) {
-  if (!text) return { detected: false, patterns: [], severity: 'low' };
-
-  const lowerText = text.toLowerCase();
-  const detectedPatterns = [];
-
-  for (const word of PROFANITY_LIST) {
-    if (lowerText.includes(word)) {
-      detectedPatterns.push(word);
+    if (!["block", "mute"].includes(action)) {
+      return errResponse("Invalid action", 400);
     }
+
+    const rows = await db.prepare(
+      "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action = ?"
+    ).bind(cu.id, action).all();
+
+    return jsonResponse(rows.results.map(r => r.targetUserId));
+  } catch (err) {
+    console.error("Get moderation list error:", err);
+    return errResponse("Request failed: " + err.message, 500);
   }
-
-  // Also check hate speech
-  for (const pattern of HATE_PATTERNS) {
-    if (pattern.test(text)) {
-      detectedPatterns.push('hate speech');
-    }
-  }
-
-  return {
-    detected: detectedPatterns.length > 0,
-    patterns: detectedPatterns,
-    severity: detectedPatterns.length > 0 ? 'high' : 'low'
-  };
-}
-
-/**
- * Detect spam in text
- * Simple wrapper for posts.js integration
- */
-export function detectSpam(text) {
-  if (!text) return { detected: false, patterns: [], severity: 'low' };
-
-  const detectedPatterns = [];
-
-  for (const pattern of SPAM_PATTERNS) {
-    if (pattern.test(text)) {
-      detectedPatterns.push('spam');
-      break; // Only add once
-    }
-  }
-
-  // Check for excessive URLs
-  const urlMatches = (text.match(/https?:\/\//gi) || []).length;
-  if (urlMatches > 2) {
-    detectedPatterns.push('excessive-urls');
-  }
-
-  // Check for excessive caps
-  const capsMatches = (text.match(/[A-Z]{4,}/g) || []).length;
-  if (capsMatches > 2) {
-    detectedPatterns.push('excessive-caps');
-  }
-
-  return {
-    detected: detectedPatterns.length > 0,
-    patterns: detectedPatterns,
-    severity: detectedPatterns.length > 0 ? 'high' : 'low'
-  };
 }

@@ -39,13 +39,27 @@ export async function verifyAuth(request, db) {
   return match ? user : null;
 }
 
-export async function shapeUser(row, db) {
+export async function shapeUser(row, db, currentUserId = null) {
   const followers = await db.prepare(
     "SELECT followerId FROM follows WHERE followingId = ?"
   ).bind(row.id).all();
   const following = await db.prepare(
     "SELECT followingId FROM follows WHERE followerId = ?"
   ).bind(row.id).all();
+  
+  let blocked = false;
+  let muted = false;
+  
+  // Get moderation status if currentUserId is provided
+  if (currentUserId && currentUserId !== row.id) {
+    const modStatus = await db.prepare(
+      "SELECT action FROM user_moderation WHERE userId = ? AND targetUserId = ? LIMIT 2"
+    ).bind(currentUserId, row.id).all();
+    
+    blocked = modStatus.results.some(m => m.action === 'block');
+    muted = modStatus.results.some(m => m.action === 'mute');
+  }
+  
   return {
     id:          row.id,
     username:    row.username,
@@ -58,6 +72,8 @@ export async function shapeUser(row, db) {
     joinedAt:    row.joinedAt,
     followers:   followers.results.map(r => r.followerId),
     following:   following.results.map(r => r.followingId),
+    blocked:     blocked,
+    muted:       muted,
   };
 }
 
@@ -79,5 +95,20 @@ export async function shapePost(row, db) {
     comments:  comments.results.map(c => ({
       id: c.id, authorId: c.authorId, text: c.text, timestamp: c.timestamp,
     })),
+  };
+}
+
+export async function getUserModeration(userId, db) {
+  const blocked = await db.prepare(
+    "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action = 'block'"
+  ).bind(userId).all();
+  
+  const muted = await db.prepare(
+    "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action = 'mute'"
+  ).bind(userId).all();
+  
+  return {
+    blocked: blocked.results.map(r => r.targetUserId),
+    muted: muted.results.map(r => r.targetUserId),
   };
 }

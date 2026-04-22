@@ -25,10 +25,13 @@ export async function onRequestGet({ request, env }) {
     if (!cu) return errResponse("Unauthorized", 401);
     rows = await db.prepare(`
       SELECT p.* FROM posts p
-      WHERE p.authorId = ?
-         OR p.authorId IN (SELECT followingId FROM follows WHERE followerId = ?)
+      WHERE (p.authorId = ? OR p.authorId IN (SELECT followingId FROM follows WHERE followerId = ?))
+        AND p.authorId NOT IN (
+          SELECT targetUserId FROM user_moderation 
+          WHERE userId = ? AND action = 'mute'
+        )
       ORDER BY p.timestamp DESC LIMIT 100
-    `).bind(cu.id, cu.id).all();
+    `).bind(cu.id, cu.id, cu.id).all();
   } else {
     rows = await db.prepare("SELECT * FROM posts ORDER BY timestamp DESC LIMIT 100").all();
   }
