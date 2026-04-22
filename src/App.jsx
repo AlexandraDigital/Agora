@@ -816,7 +816,7 @@ function SettingsScreen({ cu, onLogout, onBack, onUpdate, users, onUnblock, onUn
         <div style={{ fontWeight:600, fontSize:16, marginBottom:14, fontFamily:T.body }}>Content Preferences</div>
         
         <div style={{ marginBottom:16 }}>
-          <button onClick={() => setExpandBlocked(!expandBlocked)} style={{ width:"100%", background:"none", border:"none", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", padding:"12px 0\", fontSize:14, fontFamily:T.body, fontWeight:500, color:C.text, borderBottom:`1px solid ${C.border}` }}>
+          <button onClick={() => setExpandBlocked(!expandBlocked)} style={{ width:"100%", background:"none", border:"none", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", padding:"12px 0", fontSize:14, fontFamily:T.body, fontWeight:500, color:C.text, borderBottom:`1px solid ${C.border}` }}>
             <span>Blocked users ({blockedUsers.length})</span>
             <span style={{ fontSize:12, color:C.textMuted }}>{expandBlocked?"▼":"▶"}</span>
           </button>
