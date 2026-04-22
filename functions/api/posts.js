@@ -34,18 +34,18 @@ export async function onRequestGet({ request, env }) {
       "SELECT * FROM posts WHERE authorId=? ORDER BY timestamp DESC LIMIT 100"
     ).bind(userId).all();
   } else if (feed) {
-    // Personalized feed - exclude flagged posts for non-admins
+    // Personalized feed - exclude muted/blocked users and flagged posts for non-admins
     const query = isAdmin
       ? `
       SELECT p.* FROM posts p
       WHERE (p.authorId = ? OR p.authorId IN (SELECT followingId FROM follows WHERE followerId = ?))
         AND p.authorId NOT IN (
-          SELECT targetUserId FROM user_moderation 
-          WHERE userId = ? AND action = 'mute'
+          SELECT mutedId FROM user_mutes 
+          WHERE muterId = ?
         )
         AND p.authorId NOT IN (
-          SELECT userId FROM user_moderation 
-          WHERE targetUserId = ? AND action = 'block'
+          SELECT blockedId FROM user_blocks 
+          WHERE blockerId = ?
         )
       ORDER BY p.timestamp DESC LIMIT 100
     `
@@ -53,12 +53,12 @@ export async function onRequestGet({ request, env }) {
       SELECT p.* FROM posts p
       WHERE (p.authorId = ? OR p.authorId IN (SELECT followingId FROM follows WHERE followerId = ?))
         AND p.authorId NOT IN (
-          SELECT targetUserId FROM user_moderation 
-          WHERE userId = ? AND action = 'mute'
+          SELECT mutedId FROM user_mutes 
+          WHERE muterId = ?
         )
         AND p.authorId NOT IN (
-          SELECT userId FROM user_moderation 
-          WHERE targetUserId = ? AND action = 'block'
+          SELECT blockedId FROM user_blocks 
+          WHERE blockerId = ?
         )
         AND p.id NOT IN (
           SELECT postId FROM post_reports 
