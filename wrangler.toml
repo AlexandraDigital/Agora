@@ -1,17 +1,11 @@
-name = "agora-e65"
-main = "workers/index.js"
-compatibility_date = "2024-01-01"
-
-[env.production]
-routes = [
-  { pattern = "agora-e65.pages.dev/api/*", zone_name = "example.com" }
-]
+name = "agora"
+pages_build_output_dir = "dist"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "agora"
-database_id = "agora-db-id"
+database_name = "agora-db"
+database_id = "6b9ceef1-9630-444b-9957-7a986e50914c"
 
-[build]
-command = "npm run build"
-cwd = "./"
+[[kv_namespaces]]
+binding = "KV"
+id = "760f0c8734234d6a88ccd7cded5fa4fa"
