@@ -3,13 +3,16 @@
 -- Post reports table
 -- Tracks user reports of problematic posts
 CREATE TABLE IF NOT EXISTS post_reports (
-  id TEXT PRIMARY KEY,
-  postId TEXT NOT NULL,
+  id         TEXT PRIMARY KEY,
+  postId     TEXT NOT NULL,
   reportedBy TEXT NOT NULL,
-  reason TEXT NOT NULL,
-  timestamp INTEGER NOT NULL,
-  FOREIGN KEY (postId) REFERENCES posts(id) ON DELETE CASCADE,
-  FOREIGN KEY (reportedBy) REFERENCES users(id) ON DELETE CASCADE,
+  reason     TEXT NOT NULL,
+  status     TEXT NOT NULL DEFAULT 'pending',
+  reviewedBy TEXT,
+  reviewedAt INTEGER,
+  timestamp  INTEGER NOT NULL,
+  FOREIGN KEY (postId)     REFERENCES posts(id)  ON DELETE CASCADE,
+  FOREIGN KEY (reportedBy) REFERENCES users(id)  ON DELETE CASCADE,
   UNIQUE(postId, reportedBy)
 );
 
