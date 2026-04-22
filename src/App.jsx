@@ -32,6 +32,9 @@ const authHeaders = (token) => ({
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
 
+// ── Admin configuration ───────────────────────────────────────────────────
+const ADMIN_USER_ID = "alexandra";
+
 const api = {
   post: (path, body, token) => fetch(`${API}${path}`, { method:"POST", headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
   put:  (path, body, token) => fetch(`${API}${path}`, { method:"PUT",  headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
@@ -602,6 +605,54 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
   );
 }
 
+
+function AdminDashboard({ users, posts, cu }) {
+  const totalUsers = users.length;
+  const totalPosts = posts.length;
+  const totalFollows = users.reduce((sum, u) => sum + u.following.length, 0);
+  const avgPostsPerUser = totalPosts > 0 ? (totalPosts / totalUsers).toFixed(1) : 0;
+  const avgFollowersPerUser = users.length > 0 ? (users.reduce((sum, u) => sum + u.followers.length, 0) / totalUsers).toFixed(1) : 0;
+
+  return (
+    <div>
+      <div style={{ fontSize:17, fontWeight:700, marginBottom:20, fontFamily:T.body, color:C.text }}>Admin Dashboard</div>
+      
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:12, marginBottom:24 }}>
+        {[
+          ["Total Users", totalUsers],
+          ["Total Posts", totalPosts],
+          ["Total Follows", totalFollows],
+          ["Avg Posts/User", avgPostsPerUser],
+          ["Avg Followers", avgFollowersPerUser],
+        ].map(([label, value]) => (
+          <div key={label} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:16 }}>
+            <div style={{ fontSize:22, fontWeight:700, fontFamily:T.body, color:C.accent }}>{value}</div>
+            <div style={{ fontSize:12, color:C.textMuted, marginTop:4, fontFamily:T.body }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
+        <div style={{ fontSize:14, fontWeight:600, marginBottom:12, fontFamily:T.body }}>User Activity</div>
+        <div style={{ fontSize:12, color:C.textMuted, fontFamily:T.body }}>
+          <div style={{ marginBottom:8 }}>Most active users by post count:</div>
+          <div>
+            {users.filter(u => posts.some(p => p.authorId === u.id)).sort((a, b) => {
+              const aCount = posts.filter(p => p.authorId === a.id).length;
+              const bCount = posts.filter(p => p.authorId === b.id).length;
+              return bCount - aCount;
+            }).slice(0, 5).map((u, i) => {
+              const postCount = posts.filter(p => p.authorId === u.id).length;
+              return <div key={u.id} style={{ marginBottom:6 }}>{i + 1}. {u.displayName} (@{u.username}) - {postCount} posts</div>;
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar }) {
   const user = users.find(u=>u.id===uid);
   if (!user) return null;
@@ -1099,14 +1150,16 @@ export default function Agora() {
     {id:"explore",label:"Explore",icon:"◎"},
     {id:"compose",label:"",icon:"+",special:true},
     {id:"myprofile",label:"Me",icon:null},
+    {id:"admin",label:"Admin",icon:"⚙",adminOnly:true},
     {id:"settings",label:"More",icon:"⚙"},
-  ];
+  ]
 
   const nav=(id)=>{
     if(id==="compose"){setComposing(true);return;}
     if(id==="myprofile"){setProfileUid(cu.id);setScreen("profile");return;}
+    if(id==="admin"){setScreen("admin");return;}
     setScreen(id);
-  };
+  }
 
   if (loading) return (
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -1134,11 +1187,12 @@ export default function Agora() {
         </>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow}/>}
         {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)}/>}
+        {screen==="admin" && cu.id===ADMIN_USER_ID && <AdminDashboard users={users} posts={posts} cu={cu}/>}
         {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile}/>}
       </div>
 
       <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.surface, borderTop:`1px solid ${C.border}`, display:"flex", padding:"8px 0 18px", zIndex:50 }}>
-        {navItems.map(item=>{
+        {navItems.filter(item=>!item.adminOnly||cu.id===ADMIN_USER_ID).map(item=>{
           const active=screen===item.id||(item.id==="myprofile"&&screen==="profile"&&profileUid===cu.id);
           return (
             <button key={item.id} onClick={()=>nav(item.id)} style={{ flex:1, background:"none", border:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:3, cursor:"pointer", color:active?C.accent:C.textMuted }}>
