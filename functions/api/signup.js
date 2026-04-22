@@ -24,6 +24,6 @@ export async function onRequestPost({ request, env }) {
 
   const id = result.meta.last_row_id;
   const token = `${id}:${password}`;
-  const user = await shapeUser({ id, username, displayName, bio: bio||"", avatar: initials, avatarColor, joinedAt: Date.now() }, db);
+  const user = await shapeUser({ id, username, displayName, bio: bio||"", pw_hash, avatar: initials, avatarColor, avatarStyle: null, avatarImage: null, joinedAt: Date.now() }, db);
   return jsonResponse({ token, user }, 201);
 }
