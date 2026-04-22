@@ -23,20 +23,26 @@ const T = {
 };
 
 // ── API config ───────────────────────────────────────────────────
-// In development: set VITE_API_URL in a .env.local file.
-// In production:  set VITE_API_URL in Cloudflare Pages environment variables.
-const API = "";
+// In development: set VITE_API_URL in a .env.local file (or leave empty to use relative URLs via Vite proxy).
+// In production:  leave empty — relative paths work on Cloudflare Pages automatically.
+const API = import.meta.env.VITE_API_URL ?? "";
 
 const authHeaders = (token) => ({
   "Content-Type": "application/json",
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
 
+const safeJson = async (r) => {
+  const text = await r.text();
+  try { return JSON.parse(text); }
+  catch { return { error: `Server error ${r.status}: unexpected response` }; }
+};
+
 const api = {
-  post: (path, body, token) => fetch(`${API}${path}`, { method:"POST", headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
-  put:  (path, body, token) => fetch(`${API}${path}`, { method:"PUT",  headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
-  get:  (path, token)       => fetch(`${API}${path}`, { headers:authHeaders(token) }).then(r=>r.json()),
-  delete: (path, token)     => fetch(`${API}${path}`, { method:"DELETE", headers:authHeaders(token) }).then(r=>r.json()),
+  post:   (path, body, token) => fetch(`${API}${path}`, { method:"POST",   headers:authHeaders(token), body:JSON.stringify(body) }).then(safeJson),
+  put:    (path, body, token) => fetch(`${API}${path}`, { method:"PUT",    headers:authHeaders(token), body:JSON.stringify(body) }).then(safeJson),
+  get:    (path, token)       => fetch(`${API}${path}`, { headers:authHeaders(token) }).then(safeJson),
+  delete: (path, token)       => fetch(`${API}${path}`, { method:"DELETE", headers:authHeaders(token) }).then(safeJson),
 };
 
 const fmtTime = (ts) => {
@@ -191,7 +197,7 @@ function AvatarCustomizer({ user, token, onSave, onCancel }) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ base64, contentType }),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || res.status);
     return data.url;
   };
@@ -364,13 +370,15 @@ function Av({ user, size=36 }) {
   );
 }
 
-function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError }) {
+function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onReport }) {
   const author = users.find(u=>u.id===post.authorId);
   const [open, setOpen] = useState(false);
   const [ct, setCt] = useState("");
   const [showDeleteMenu, setShowDeleteMenu] = useState(false);
+  const [playingUrl, setPlayingUrl] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState(null);
+  const [reporting, setReporting] = useState(false);
   if (!author) return null;
   const liked = post.likes.includes(cu.id);
   const isAuthor = post.authorId === cu.id;
@@ -382,6 +390,7 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
       await onDelete(post.id);
       setShowDeleteMenu(false);
     } catch (err) {
+      console.error("Delete post error:", err);
       onError?.(err);
     } finally {
       setDeleting(false);
@@ -393,9 +402,23 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
     try {
       await onDeleteComment(post.id, cid);
     } catch (err) {
+      console.error("Delete comment error:", err);
       onError?.(err);
     } finally {
       setDeletingCommentId(null);
+    }
+  };
+
+  const handleReport = async () => {
+    setReporting(true);
+    try {
+      await onReport?.(post.id, post.authorId);
+      setShowDeleteMenu(false);
+    } catch (err) {
+      console.error("Report error:", err);
+      onError?.(err);
+    } finally {
+      setReporting(false);
     }
   };
   
@@ -412,16 +435,19 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
             <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>{fmtTime(post.timestamp)}</div>
           </div>
         </div>
-        {isAuthor && (
-          <div style={{ position:"relative" }}>
-            <button onClick={()=>setShowDeleteMenu(!showDeleteMenu)} disabled={deleting} style={{ background:"none", border:"none", cursor:deleting?"default":"pointer", color:C.textMuted, fontSize:16, padding:"0 4px", lineHeight:1, opacity:deleting?0.5:1 }}>⋯</button>
-            {showDeleteMenu && (
-              <div style={{ position:"absolute", top:"100%", right:0, background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, marginTop:4, zIndex:10, minWidth:140, boxShadow:"0 2px 8px rgba(0,0,0,0.1)" }}>
+        <div style={{ position:"relative" }}>
+          <button onClick={()=>setShowDeleteMenu(!showDeleteMenu)} disabled={deleting||reporting} style={{ background:"none", border:"none", cursor:deleting||reporting?"default":"pointer", color:C.textMuted, fontSize:16, padding:"0 4px", lineHeight:1, opacity:deleting||reporting?0.5:1 }}>⋯</button>
+          {showDeleteMenu && (
+            <div style={{ position:"absolute", top:"100%", right:0, background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, marginTop:4, zIndex:10, minWidth:160, boxShadow:"0 2px 8px rgba(0,0,0,0.1)" }}>
+              {isAuthor && (
                 <button onClick={handleDeletePost} disabled={deleting} style={{ width:"100%", background:"none", border:"none", cursor:deleting?"default":"pointer", color:deleting?C.border:"#d63031", fontSize:13, padding:"10px 12px", textAlign:"left", fontFamily:T.body, borderRadius:8, transition:"background 0.2s" }} onMouseEnter={e=>!deleting&&(e.target.style.background="#fff5f5")} onMouseLeave={e=>!deleting&&(e.target.style.background="none")}>{deleting?"Deleting…":"Delete post"}</button>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+              {!isAuthor && (
+                <button onClick={handleReport} disabled={reporting} style={{ width:"100%", background:"none", border:"none", cursor:reporting?"default":"pointer", color:reporting?C.border:"#ff9800", fontSize:13, padding:"10px 12px", textAlign:"left", fontFamily:T.body, borderRadius:8, transition:"background 0.2s" }} onMouseEnter={e=>!reporting&&(e.target.style.background="#fff8f0")} onMouseLeave={e=>!reporting&&(e.target.style.background="none")}>{reporting?"Reporting…":"Report post"}</button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <div style={{ padding:"0 16px 14px", fontSize:15, lineHeight:1.65, whiteSpace:"pre-wrap", fontFamily:T.body, color:C.text }}>
         <RichText content={post.content} />
@@ -430,40 +456,90 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
         const url = post.url;
         const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]+)/);
         const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
-        const ttMatch = url.match(/tiktok\.com/);
+        const ttMatch = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/);
+
+        const VideoThumbnail = ({ thumbUrl, embedSrc, embedAllow, label, linkUrl }) => (
+          playingUrl
+            ? <div style={{ position:"relative", paddingBottom:"56.25%", height:0, overflow:"hidden" }}>
+                <iframe
+                  src={embedSrc}
+                  style={{ position:"absolute", top:0, left:0, width:"100%", height:"100%", border:"none" }}
+                  allow={embedAllow}
+                  allowFullScreen
+                />
+              </div>
+            : <div
+                onClick={linkUrl ? undefined : () => setPlayingUrl(true)}
+                style={{ position:"relative", cursor: linkUrl ? "default" : "pointer", lineHeight:0, background:"#000", borderRadius:8, overflow:"hidden" }}
+              >
+                <img
+                  src={thumbUrl}
+                  alt={label}
+                  style={{ width:"100%", maxHeight:340, objectFit:"cover", display:"block", opacity:0.88 }}
+                  onError={e => { e.target.style.minHeight="120px"; }}
+                />
+                <div style={{
+                  position:"absolute", inset:0, display:"flex", flexDirection:"column",
+                  alignItems:"center", justifyContent:"center", gap:8,
+                }}>
+                  {linkUrl
+                    ? <a href={linkUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 20px",
+                          background:"rgba(0,0,0,0.72)", borderRadius:24, textDecoration:"none",
+                          color:"#fff", fontSize:14, fontFamily:T.body, backdropFilter:"blur(4px)" }}>
+                        <span style={{ fontSize:18 }}>▶</span>
+                        <span>Watch on TikTok</span>
+                        <span style={{ fontSize:11 }}>↗</span>
+                      </a>
+                    : <div style={{
+                        width:56, height:56, borderRadius:"50%",
+                        background:"rgba(0,0,0,0.65)", display:"flex",
+                        alignItems:"center", justifyContent:"center",
+                        backdropFilter:"blur(2px)",
+                        boxShadow:"0 2px 12px rgba(0,0,0,0.4)",
+                      }}>
+                        <span style={{ fontSize:22, marginLeft:4, color:"#fff" }}>▶</span>
+                      </div>
+                  }
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.8)", fontFamily:T.body, textShadow:"0 1px 4px rgba(0,0,0,0.8)" }}>{label}</div>
+                </div>
+              </div>
+        );
+
         if (ytMatch) {
           return (
-            <div style={{ margin:"0 0 14px", position:"relative", paddingBottom:"56.25%", height:0, overflow:"hidden" }}>
-              <iframe
-                src={`https://www.youtube.com/embed/${ytMatch[1]}`}
-                style={{ position:"absolute", top:0, left:0, width:"100%", height:"100%", border:"none" }}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
+            <div style={{ margin:"0 0 14px" }}>
+              <VideoThumbnail
+                thumbUrl={`https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`}
+                embedSrc={`https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1`}
+                embedAllow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                label="YouTube"
               />
             </div>
           );
         }
         if (vimeoMatch) {
           return (
-            <div style={{ margin:"0 0 14px", position:"relative", paddingBottom:"56.25%", height:0, overflow:"hidden" }}>
-              <iframe
-                src={`https://player.vimeo.com/video/${vimeoMatch[1]}`}
-                style={{ position:"absolute", top:0, left:0, width:"100%", height:"100%", border:"none" }}
-                allow="autoplay; fullscreen; picture-in-picture"
-                allowFullScreen
+            <div style={{ margin:"0 0 14px" }}>
+              <VideoThumbnail
+                thumbUrl={`https://vumbnail.com/${vimeoMatch[1]}.jpg`}
+                embedSrc={`https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`}
+                embedAllow="autoplay; fullscreen; picture-in-picture"
+                label="Vimeo"
               />
             </div>
           );
         }
         if (ttMatch) {
           return (
-            <div style={{ margin:"0 16px 14px" }}>
-              <a href={url} target="_blank" rel="noopener noreferrer"
-                style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 13px", background:C.accentLight, border:`1px solid ${C.border}`, borderRadius:10, textDecoration:"none", color:C.accent, fontSize:13, fontFamily:T.body }}>
-                <span style={{ flexShrink:0 }}>▶</span>
-                <span style={{ flex:1 }}>Watch on TikTok</span>
-                <span style={{ flexShrink:0, fontSize:11 }}>↗</span>
-              </a>
+            <div style={{ margin:"0 0 14px" }}>
+              <VideoThumbnail
+                thumbUrl={`https://www.tiktok.com/api/img/?itemId=${ttMatch[1]}&location=0`}
+                embedSrc={null}
+                embedAllow={null}
+                label="Watch on TikTok"
+                linkUrl={url}
+              />
             </div>
           );
         }
@@ -518,8 +594,8 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
   );
 }
 
-function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError }) {
-  const feed = posts.filter(p=>cu.following.includes(p.authorId)||p.authorId===cu.id).sort((a,b)=>b.timestamp-a.timestamp);
+function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onReport }) {
+  const feed = [...posts].sort((a,b)=>b.timestamp-a.timestamp);
   return (
     <div>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
@@ -532,7 +608,7 @@ function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteCom
           <div style={{ fontSize:16, fontWeight:600, marginBottom:8, fontFamily:T.body }}>Your feed is empty</div>
           <div style={{ fontSize:14, color:C.textMuted, fontFamily:T.body }}>Follow people from Explore to see their posts here.</div>
         </div>
-      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError}/>)}
+      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onReport={onReport}/>)}
     </div>
   );
 }
@@ -582,7 +658,7 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
                 <span style={{ fontSize:20, fontWeight:700, fontFamily:T.brand, color:C.accent }}>{selTag}</span>
                 <button onClick={()=>setSelTag(null)} style={{ background:C.border, border:"none", borderRadius:20, padding:"3px 10px", fontSize:11, cursor:"pointer", color:C.textMuted, fontFamily:T.body }}>✕ clear</button>
               </div>
-              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={()=>{}} onComment={()=>{}} onDelete={()=>{}} onDeleteComment={()=>{}} onUser={onUser}/>)}
+              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={()=>{}} onComment={()=>{}} onDelete={()=>{}} onDeleteComment={()=>{}} onUser={onUser} onReport={onReport}/>)}
               <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:16, marginTop:8 }}>
                 <div style={{ fontSize:12, color:C.textMuted, marginBottom:12, fontFamily:T.body }}>All tags</div>
               </div>
@@ -602,12 +678,38 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
   );
 }
 
-function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar }) {
+function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onBlock, onMute }) {
   const user = users.find(u=>u.id===uid);
   if (!user) return null;
   const isOwn = uid===cu.id;
   const following = cu.following.includes(uid);
+  const blocked = cu.blocked?.includes(uid) || false;
+  const muted = cu.muted?.includes(uid) || false;
+  const [blocking, setBlocking] = useState(false);
+  const [muting, setMuting] = useState(false);
   const userPosts = posts.filter(p=>p.authorId===uid).sort((a,b)=>b.timestamp-a.timestamp);
+
+  const handleBlock = async () => {
+    setBlocking(true);
+    try {
+      await onBlock?.(uid);
+    } catch (err) {
+      onError?.(err);
+    } finally {
+      setBlocking(false);
+    }
+  };
+
+  const handleMute = async () => {
+    setMuting(true);
+    try {
+      await onMute?.(uid);
+    } catch (err) {
+      onError?.(err);
+    } finally {
+      setMuting(false);
+    }
+  };
   return (
     <div>
       <button onClick={onBack} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:14, padding:"0 0 16px", fontFamily:T.body, display:"flex", alignItems:"center", gap:4 }}>← back</button>
@@ -621,7 +723,11 @@ function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComm
             </div>
           </div>
           {!isOwn && (
-            <button onClick={()=>onFollow(uid)} style={{ background:following?"none":C.accent, color:following?C.textMuted:"#fff", border:`1px solid ${following?C.borderStrong:C.accent}`, borderRadius:20, padding:"8px 20px", fontSize:13, cursor:"pointer", fontFamily:T.body, fontWeight:500, flexShrink:0 }}>{following?"Unfollow":"Follow"}</button>
+            <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+              <button onClick={()=>onFollow(uid)} style={{ background:following?"none":C.accent, color:following?C.textMuted:"#fff", border:`1px solid ${following?C.borderStrong:C.accent}`, borderRadius:20, padding:"8px 20px", fontSize:13, cursor:"pointer", fontFamily:T.body, fontWeight:500 }}>{following?"Unfollow":"Follow"}</button>
+              <button onClick={handleBlock} disabled={blocking} style={{ background:"none", border:`1px solid ${blocked?C.accent:C.borderStrong}`, color:blocked?C.accent:C.textMuted, borderRadius:20, padding:"8px 16px", fontSize:13, cursor:blocking?"default":"pointer", fontFamily:T.body, fontWeight:500, opacity:blocking?0.6:1 }}>{blocked?"Unblock":"Block"}</button>
+              <button onClick={handleMute} disabled={muting} style={{ background:"none", border:`1px solid ${muted?C.accent:C.borderStrong}`, color:muted?C.accent:C.textMuted, borderRadius:20, padding:"8px 16px", fontSize:13, cursor:muting?"default":"pointer", fontFamily:T.body, fontWeight:500, opacity:muting?0.6:1 }}>{muted?"Unmute":"Mute"}</button>
+            </div>
           )}
           {isOwn && (
             <button onClick={onEditAvatar} style={{ background:"none", border:`1px solid ${C.borderStrong}`, color:C.textMuted, borderRadius:20, padding:"8px 16px", fontSize:13, cursor:"pointer", fontFamily:T.body, fontWeight:500, flexShrink:0 }}>Edit avatar</button>
@@ -638,16 +744,251 @@ function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComm
         </div>
       </div>
       {userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
-      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError}/>)}
+      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onReport={onReport}/>)}
     </div>
   );
 }
 
-function SettingsScreen({ cu, onLogout, onBack, onUpdate }) {
+// ── Moderation Panel Component ───────────────────────────────────
+function ModerationPanel({ token, cu, onError }) {
+  const [flags, setFlags] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(null);
+  const [filter, setFilter] = useState("pending");
+
+  useEffect(() => {
+    fetchFlags();
+  }, []);
+
+  const fetchFlags = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/api/moderation/flags", token);
+      if (!res.error) {
+        setFlags(res.flags || []);
+        setUsers(res.users || []);
+      } else {
+        onError?.({ message: res.error });
+      }
+    } catch (err) {
+      onError?.({ message: "Failed to load flagged posts" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const approveFlag = async (flagId) => {
+    setActionLoading(flagId);
+    try {
+      const res = await api.put(`/api/moderation/flags/${flagId}`, { reviewed: true }, token);
+      if (res.error) {
+        onError?.({ message: res.error });
+        return;
+      }
+      setFlags(prev => prev.map(f => f.id === flagId ? { ...f, reviewed: true } : f));
+    } catch (err) {
+      onError?.({ message: "Failed to approve flag" });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const deletePost = async (postId) => {
+    setActionLoading(postId);
+    try {
+      const res = await api.delete(`/api/posts/${postId}`, token);
+      if (res.error) {
+        onError?.({ message: res.error });
+        return;
+      }
+      setFlags(prev => prev.filter(f => f.postId !== postId));
+    } catch (err) {
+      onError?.({ message: "Failed to delete post" });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const filteredFlags = flags.filter(f => {
+    if (filter === "pending") return !f.reviewed;
+    if (filter === "reviewed") return f.reviewed;
+    return true;
+  });
+
+  const getUser = (uid) => users.find(u => u.id === uid);
+
+  // Only show for admin
+  if (cu.id !== "alex12g") return null;
+
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, marginBottom: 16 }}>
+      <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 16, fontFamily: T.body }}>🛡️ Moderation Dashboard</div>
+      
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {["pending", "reviewed", "all"].map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            style={{
+              background: filter === f ? C.accent : C.bg,
+              color: filter === f ? "#fff" : C.text,
+              border: `1px solid ${filter === f ? C.accent : C.border}`,
+              borderRadius: 6,
+              padding: "6px 12px",
+              fontSize: 12,
+              cursor: "pointer",
+              fontFamily: T.body,
+              fontWeight: 500,
+            }}
+          >
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+        <button
+          onClick={fetchFlags}
+          disabled={loading}
+          style={{
+            background: "none",
+            border: `1px solid ${C.border}`,
+            borderRadius: 6,
+            padding: "6px 12px",
+            fontSize: 12,
+            cursor: loading ? "default" : "pointer",
+            fontFamily: T.body,
+            color: C.text,
+            marginLeft: "auto",
+          }}
+        >
+          {loading ? "↻" : "Refresh"}
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 20, color: C.textMuted }}>Loading...</div>
+      ) : filteredFlags.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 20, color: C.textMuted, fontSize: 13 }}>
+          No {filter === "all" ? "flagged" : filter} posts
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {filteredFlags.map(flag => {
+            const author = getUser(flag.authorId);
+            if (!author) return null;
+            return (
+              <div
+                key={flag.id}
+                style={{
+                  background: flag.reviewed ? C.bg : "#fff8f0",
+                  border: `1px solid ${flag.reviewed ? C.border : "#f39c12"}`,
+                  borderRadius: 8,
+                  padding: 12,
+                  opacity: flag.reviewed ? 0.7 : 1,
+                }}
+              >
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+                  <Av user={author} size={32} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, fontFamily: T.body }}>
+                      {author.displayName} <span style={{ color: C.textMuted }}>@{author.username}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>
+                      Flagged for: <strong>{flag.reason}</strong>
+                    </div>
+                    <div style={{ fontSize: 13, fontFamily: T.body, lineHeight: 1.5, color: C.text, marginBottom: 8, padding: 8, background: C.surface, borderRadius: 6 }}>
+                      {flag.content}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.textMuted }}>
+                      {flag.reportCount} report{flag.reportCount !== 1 ? "s" : ""} · {fmtTime(flag.timestamp)}
+                    </div>
+                  </div>
+                </div>
+
+                {!flag.reviewed && (
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button
+                      onClick={() => approveFlag(flag.id)}
+                      disabled={actionLoading === flag.id}
+                      style={{
+                        background: "none",
+                        border: `1px solid ${C.success}`,
+                        color: C.success,
+                        borderRadius: 6,
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        cursor: actionLoading === flag.id ? "default" : "pointer",
+                        fontFamily: T.body,
+                        opacity: actionLoading === flag.id ? 0.5 : 1,
+                      }}
+                    >
+                      {actionLoading === flag.id ? "…" : "✓ Approve"}
+                    </button>
+                    <button
+                      onClick={() => deletePost(flag.postId)}
+                      disabled={actionLoading === flag.postId}
+                      style={{
+                        background: "none",
+                        border: "1px solid #d63031",
+                        color: "#d63031",
+                        borderRadius: 6,
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        cursor: actionLoading === flag.postId ? "default" : "pointer",
+                        fontFamily: T.body,
+                        opacity: actionLoading === flag.postId ? 0.5 : 1,
+                      }}
+                    >
+                      {actionLoading === flag.postId ? "…" : "Delete"}
+                    </button>
+                  </div>
+                )}
+                {flag.reviewed && (
+                  <div style={{ fontSize: 12, color: C.success, fontStyle: "italic" }}>
+                    ✓ Reviewed
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsScreen({ cu, onLogout, onBack, onUpdate, users, onUnblock, onUnmute, token, onError }) {
   const [dn, setDn] = useState(cu.displayName);
   const [bio, setBio] = useState(cu.bio||"");
   const [saved, setSaved] = useState(false);
+  const [expandBlocked, setExpandBlocked] = useState(false);
+  const [expandMuted, setExpandMuted] = useState(false);
+  const [unblocking, setUnblocking] = useState(null);
+  const [unmuting, setUnmuting] = useState(null);
+  
+  const blocked = cu.blocked || [];
+  const muted = cu.muted || [];
+  const blockedUsers = users.filter(u => blocked.includes(u.id));
+  const mutedUsers = users.filter(u => muted.includes(u.id));
+  
   const save = () => { onUpdate({ displayName:dn, bio }); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  
+  const handleUnblock = async (uid) => {
+    setUnblocking(uid);
+    try {
+      await onUnblock?.(uid);
+    } finally {
+      setUnblocking(null);
+    }
+  };
+  
+  const handleUnmute = async (uid) => {
+    setUnmuting(uid);
+    try {
+      await onUnmute?.(uid);
+    } finally {
+      setUnmuting(null);
+    }
+  };
   const privacyItems = [
     ["No data collection","We collect zero analytics or usage data"],
     ["No tracking","No cookies, no fingerprinting, no ad profiles"],
@@ -658,6 +999,10 @@ function SettingsScreen({ cu, onLogout, onBack, onUpdate }) {
   return (
     <div>
       <button onClick={onBack} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:14, padding:"0 0 16px", fontFamily:T.body }}>← back</button>
+      
+      {/* Moderation Panel - Admin Only */}
+      <ModerationPanel token={token} cu={cu} onError={onError} />
+      
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
         <div style={{ fontWeight:600, fontSize:16, marginBottom:16, fontFamily:T.body }}>Edit profile</div>
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
@@ -678,6 +1023,50 @@ function SettingsScreen({ cu, onLogout, onBack, onUpdate }) {
           </div>
         ))}
       </div>
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
+        <div style={{ fontWeight:600, fontSize:16, marginBottom:14, fontFamily:T.body }}>Content Preferences</div>
+        
+        <div style={{ marginBottom:16 }}>
+          <button onClick={() => setExpandBlocked(!expandBlocked)} style={{ width:"100%", background:"none", border:"none", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", padding:"12px 0", fontSize:14, fontFamily:T.body, fontWeight:500, color:C.text, borderBottom:`1px solid ${C.border}` }}>
+            <span>Blocked users ({blockedUsers.length})</span>
+            <span style={{ fontSize:12, color:C.textMuted }}>{expandBlocked?"▼":"▶"}</span>
+          </button>
+          {expandBlocked && blockedUsers.length > 0 && (
+            <div style={{ marginTop:10, display:"flex", flexDirection:"column", gap:8 }}>
+              {blockedUsers.map(u => (
+                <div key={u.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:10, background:C.bg, borderRadius:8 }}>
+                  <span style={{ fontSize:14, fontFamily:T.body }}>{u.displayName} <span style={{ color:C.textMuted }}>@{u.username}</span></span>
+                  <button onClick={() => handleUnblock(u.id)} disabled={unblocking === u.id} style={{ background:"none", border:"none", color:C.accent, cursor:unblocking === u.id?"default":"pointer", fontSize:12, fontFamily:T.body, opacity:unblocking === u.id?0.6:1 }}>{unblocking === u.id?"…":"Unblock"}</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {expandBlocked && blockedUsers.length === 0 && (
+            <div style={{ padding:10, color:C.textMuted, fontSize:13, fontFamily:T.body }}>No blocked users</div>
+          )}
+        </div>
+        
+        <div>
+          <button onClick={() => setExpandMuted(!expandMuted)} style={{ width:"100%", background:"none", border:"none", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", padding:"12px 0", fontSize:14, fontFamily:T.body, fontWeight:500, color:C.text, borderBottom:`1px solid ${C.border}` }}>
+            <span>Muted users ({mutedUsers.length})</span>
+            <span style={{ fontSize:12, color:C.textMuted }}>{expandMuted?"▼":"▶"}</span>
+          </button>
+          {expandMuted && mutedUsers.length > 0 && (
+            <div style={{ marginTop:10, display:"flex", flexDirection:"column", gap:8 }}>
+              {mutedUsers.map(u => (
+                <div key={u.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:10, background:C.bg, borderRadius:8 }}>
+                  <span style={{ fontSize:14, fontFamily:T.body }}>{u.displayName} <span style={{ color:C.textMuted }}>@{u.username}</span></span>
+                  <button onClick={() => handleUnmute(u.id)} disabled={unmuting === u.id} style={{ background:"none", border:"none", color:C.accent, cursor:unmuting === u.id?"default":"pointer", fontSize:12, fontFamily:T.body, opacity:unmuting === u.id?0.6:1 }}>{unmuting === u.id?"…":"Unmute"}</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {expandMuted && mutedUsers.length === 0 && (
+            <div style={{ padding:10, color:C.textMuted, fontSize:13, fontFamily:T.body }}>No muted users</div>
+          )}
+        </div>
+      </div>
+      
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
         <button onClick={onLogout} style={{ background:"none", border:`1px solid ${C.accent}`, color:C.accent, borderRadius:8, padding:"10px 20px", fontSize:14, cursor:"pointer", fontFamily:T.body }}>Sign out</button>
       </div>
@@ -767,14 +1156,14 @@ function ComposeModal({ cu, token, onPost, onClose }) {
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
             body: JSON.stringify({ base64, contentType: file.mime, size: file.raw.size }),
           });
-          const data = await resp.json();
+          const data = await safeJson(resp);
           if (!resp.ok) { alert("Video upload failed: " + (data.error || resp.status)); setUploading(false); return; }
           mediaPayload = { type: "video", thumb: file.thumb, videoUrl: data.url };
         } else {
           mediaPayload = { type: "image", thumb: file.thumb };
         }
       }
-      onPost(text.trim(), mediaPayload, videoEmbed ? videoUrl.trim() : null);
+      await onPost(text.trim(), mediaPayload, videoEmbed ? videoUrl.trim() : null);
       onClose();
     } catch (err) {
       alert("Post failed: " + err.message);
@@ -864,25 +1253,30 @@ function ComposeModal({ cu, token, onPost, onClose }) {
 }
 
 function AuthScreen({ onLogin, onSignup }) {
-  const [mode, setMode] = useState("signup");
+  const [mode, setMode] = useState("login");
   const [un, setUn] = useState(""); const [pw, setPw] = useState("");
   const [dn, setDn] = useState(""); const [bio, setBio] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     setErr(""); setBusy(true);
-    if (mode==="login") {
-      const ok = await onLogin(un, pw);
-      if (!ok) setErr("Username or password incorrect.");
-    } else {
-      if(!un||!pw||!dn){ setErr("Please fill in all required fields."); setBusy(false); return; }
-      if(un.length<3){ setErr("Username must be at least 3 characters."); setBusy(false); return; }
-      if(pw.length<8){ setErr("Password must be at least 8 characters."); setBusy(false); return; }
-      if(!/^[a-z0-9_]+$/.test(un)){ setErr("Username can only contain letters, numbers, underscores."); setBusy(false); return; }
-      const res = await onSignup(un, pw, dn, bio);
-      if (res !== true) setErr(res || "Username already taken.");
+    try {
+      if (mode==="login") {
+        const ok = await onLogin(un, pw);
+        if (!ok) setErr("Username or password incorrect.");
+      } else {
+        if(!un||!pw||!dn){ setErr("Please fill in all required fields."); return; }
+        if(un.length<3){ setErr("Username must be at least 3 characters."); return; }
+        if(pw.length<8){ setErr("Password must be at least 8 characters."); return; }
+        if(!/^[a-z0-9_]+$/.test(un)){ setErr("Username can only contain letters, numbers, underscores."); return; }
+        const res = await onSignup(un, pw, dn, bio);
+        if (res !== true) setErr(res || "Username already taken.");
+      }
+    } catch (e) {
+      setErr("Network error. Please check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
   return (
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
@@ -935,11 +1329,25 @@ export default function Agora() {
 
   // Restore session from localStorage (token + user only — posts/users come from API)
   useEffect(() => {
-    const savedToken = localStorage.getItem("ag_token");
-    const savedUser  = localStorage.getItem("ag_cu");
-    if (savedToken && savedUser) {
-      setToken(savedToken);
-      setCu(JSON.parse(savedUser));
+    try {
+      const savedToken = localStorage.getItem("ag_token");
+      const savedUser  = localStorage.getItem("ag_cu");
+      if (savedToken && savedUser) {
+        const parsed = JSON.parse(savedUser);
+        // Guard against stale user objects missing required array fields
+        if (parsed && parsed.id) {
+          parsed.following = parsed.following || [];
+          parsed.followers = parsed.followers || [];
+          parsed.blocked   = parsed.blocked   || [];
+          parsed.muted     = parsed.muted     || [];
+          setToken(savedToken);
+          setCu(parsed);
+        }
+      }
+    } catch (e) {
+      // Corrupted localStorage — clear it and show auth screen
+      localStorage.removeItem("ag_token");
+      localStorage.removeItem("ag_cu");
     }
     setLoading(false);
   }, []);
@@ -952,28 +1360,57 @@ export default function Agora() {
         api.get("/api/users", token),
         api.get(`/api/posts?feed=1`, token),
       ]);
-      if (!us.error) setUsers(us);
+      if (!us.error) {
+        const sanitized = us.map(u => ({
+          ...u,
+          following: Array.isArray(u.following) ? u.following : [],
+          followers: Array.isArray(u.followers) ? u.followers : [],
+          blocked:   Array.isArray(u.blocked)   ? u.blocked   : [],
+          muted:     Array.isArray(u.muted)     ? u.muted     : [],
+        }));
+        setUsers(sanitized);
+        const freshCu = sanitized.find(u => u.id === cu.id);
+        if (freshCu) setCu(freshCu);
+      }
       if (!ps.error) setPosts(ps);
     };
     load();
   }, [cu?.id]);
 
   const login = async (un, pw) => {
-    const res = await api.post("/api/login", { username: un, password: pw });
-    if (res.error) return false;
-    setCu(res.user); setToken(res.token);
-    localStorage.setItem("ag_token", res.token);
-    localStorage.setItem("ag_cu", JSON.stringify(res.user));
-    return true;
+    try {
+      const res = await api.post("/api/login", { username: un, password: pw });
+      if (res.error) return false;
+      const user = res.user;
+      user.following = user.following || [];
+      user.followers = user.followers || [];
+      user.blocked   = user.blocked   || [];
+      user.muted     = user.muted     || [];
+      setCu(user); setToken(res.token);
+      localStorage.setItem("ag_token", res.token);
+      localStorage.setItem("ag_cu", JSON.stringify(user));
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const signup = async (un, pw, dn, bio) => {
-    const res = await api.post("/api/signup", { username:un, password:pw, displayName:dn, bio });
-    if (res.error) return res.error;
-    setCu(res.user); setToken(res.token);
-    localStorage.setItem("ag_token", res.token);
-    localStorage.setItem("ag_cu", JSON.stringify(res.user));
-    return true;
+    try {
+      const res = await api.post("/api/signup", { username:un, password:pw, displayName:dn, bio });
+      if (res.error) return res.error;
+      const user = res.user;
+      user.following = user.following || [];
+      user.followers = user.followers || [];
+      user.blocked   = user.blocked   || [];
+      user.muted     = user.muted     || [];
+      setCu(user); setToken(res.token);
+      localStorage.setItem("ag_token", res.token);
+      localStorage.setItem("ag_cu", JSON.stringify(user));
+      return true;
+    } catch {
+      return "Network error. Please try again.";
+    }
   };
 
   const logout = () => {
@@ -1020,16 +1457,19 @@ export default function Agora() {
     setPosts(prev => prev.filter(p => p.id !== pid));
     try {
       const res = await api.delete(`/api/posts/${pid}`, token);
+      console.log("Delete response:", res);
       if (res.error) {
         // Revert on error
+        console.error("Delete error:", res.error);
         setPosts(originalPosts);
-        setToast({ message: "Failed to delete post. Please try again.", type: "error" });
+        setToast({ message: res.error, type: "error" });
         throw new Error(res.error);
       }
       setToast({ message: "Post deleted.", type: "success" });
     } catch (err) {
+      console.error("Delete caught error:", err);
       setPosts(originalPosts);
-      setToast({ message: "Failed to delete post. Please try again.", type: "error" });
+      setToast({ message: err.message || "Failed to delete post.", type: "error" });
     }
   };
 
@@ -1057,7 +1497,7 @@ export default function Agora() {
 
   const doPost = async (content, media, url) => {
     const res = await api.post("/api/posts", { content, media: media ? { type:media.type, thumb:media.thumb, videoUrl:media.videoUrl||null } : null, url: url||null }, token);
-    if (res.error) return;
+    if (res.error) { setToast({ message: res.error, type: "error" }); return; }
     setPosts(prev => [res, ...prev]);
     setScreen("feed");
   };
@@ -1068,6 +1508,96 @@ export default function Agora() {
     setCu(res);
     localStorage.setItem("ag_cu", JSON.stringify(res));
     setUsers(prev => prev.map(u => u.id === cu.id ? res : u));
+  };
+
+  const report = async (postId, authorId) => {
+    try {
+      const res = await api.post(`/api/posts/${postId}/report`, { authorId }, token);
+      if (res.error) {
+        setToast({ message: res.error, type: "error" });
+        return;
+      }
+      setToast({ message: "Report submitted. Thank you for helping keep Agora safe.", type: "success" });
+    } catch (err) {
+      setToast({ message: "Failed to report post.", type: "error" });
+      throw err;
+    }
+  };
+
+  const block = async (uid) => {
+    try {
+      const res = await api.post(`/api/users/${uid}/block`, {}, token);
+      if (res.error) {
+        setToast({ message: res.error, type: "error" });
+        return;
+      }
+      // Optimistic update
+      const newBlocked = [...(cu.blocked || []), uid];
+      const newCu = { ...cu, blocked: newBlocked };
+      setCu(newCu);
+      localStorage.setItem("ag_cu", JSON.stringify(newCu));
+      setToast({ message: "User blocked.", type: "success" });
+    } catch (err) {
+      setToast({ message: "Failed to block user.", type: "error" });
+      throw err;
+    }
+  };
+
+  const unblock = async (uid) => {
+    try {
+      const res = await api.post(`/api/users/${uid}/unblock`, {}, token);
+      if (res.error) {
+        setToast({ message: res.error, type: "error" });
+        return;
+      }
+      // Optimistic update
+      const newBlocked = (cu.blocked || []).filter(id => id !== uid);
+      const newCu = { ...cu, blocked: newBlocked };
+      setCu(newCu);
+      localStorage.setItem("ag_cu", JSON.stringify(newCu));
+      setToast({ message: "User unblocked.", type: "success" });
+    } catch (err) {
+      setToast({ message: "Failed to unblock user.", type: "error" });
+      throw err;
+    }
+  };
+
+  const mute = async (uid) => {
+    try {
+      const res = await api.post(`/api/users/${uid}/mute`, {}, token);
+      if (res.error) {
+        setToast({ message: res.error, type: "error" });
+        return;
+      }
+      // Optimistic update
+      const newMuted = [...(cu.muted || []), uid];
+      const newCu = { ...cu, muted: newMuted };
+      setCu(newCu);
+      localStorage.setItem("ag_cu", JSON.stringify(newCu));
+      setToast({ message: "User muted.", type: "success" });
+    } catch (err) {
+      setToast({ message: "Failed to mute user.", type: "error" });
+      throw err;
+    }
+  };
+
+  const unmute = async (uid) => {
+    try {
+      const res = await api.post(`/api/users/${uid}/unmute`, {}, token);
+      if (res.error) {
+        setToast({ message: res.error, type: "error" });
+        return;
+      }
+      // Optimistic update
+      const newMuted = (cu.muted || []).filter(id => id !== uid);
+      const newCu = { ...cu, muted: newMuted };
+      setCu(newCu);
+      localStorage.setItem("ag_cu", JSON.stringify(newCu));
+      setToast({ message: "User unmuted.", type: "success" });
+    } catch (err) {
+      setToast({ message: "Failed to unmute user.", type: "error" });
+      throw err;
+    }
   };
 
   const [editingAvatar, setEditingAvatar] = useState(false);
@@ -1083,6 +1613,11 @@ export default function Agora() {
       let res;
       try { res = JSON.parse(text); } catch { alert("Save failed: " + text); return; }
       if (!raw.ok || res.error) { alert("Save failed: " + (res.error || raw.status)); return; }
+      // Normalize array fields so nothing crashes if API omits them
+      res.following = res.following || [];
+      res.followers = res.followers || [];
+      res.blocked   = res.blocked   || [];
+      res.muted     = res.muted     || [];
       setCu(res);
       localStorage.setItem("ag_cu", JSON.stringify(res));
       setUsers(prev => prev.map(u => u.id === cu.id ? res : u));
@@ -1130,11 +1665,11 @@ export default function Agora() {
       <div style={{ maxWidth:600, margin:"0 auto", padding:"20px 16px 100px" }}>
         {screen==="feed" && <>
           <PWAInstallButton />
-          <FeedScreen posts={posts} users={users} cu={cu} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})}/>
+          <FeedScreen posts={posts} users={users} cu={cu} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onReport={report}/>
         </>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)}/>}
-        {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onBlock={block} onMute={mute}/>}
+        {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} users={users} onUnblock={unblock} onUnmute={unmute} token={token} onError={(err)=>setToast({message:err.message,type:"error"})}/>}
       </div>
 
       <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.surface, borderTop:`1px solid ${C.border}`, display:"flex", padding:"8px 0 18px", zIndex:50 }}>
@@ -1156,7 +1691,7 @@ export default function Agora() {
       </div>
 
       {editingAvatar && <AvatarCustomizer user={cu} token={token} onSave={handleSaveAvatar} onCancel={()=>setEditingAvatar(false)}/>}
-      {composing && <ComposeModal cu={cu} token={token} onPost={(content,media,url)=>{doPost(content,media,url);}} onClose={()=>setComposing(false)}/> }
+      {composing && <ComposeModal cu={cu} token={token} onPost={doPost} onClose={()=>setComposing(false)}/> }
       {toast && <Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
     </div>
   );
