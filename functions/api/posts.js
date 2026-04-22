@@ -63,6 +63,7 @@ export async function onRequestPost({ request, env }) {
     // Determine severity and action
     let severity = "none";
     let moderationReason = null;
+    let flagType = null;
 
     if (profanityResult.detected || spamResult.detected) {
       const isCritical = profanityResult.severity === "high" || spamResult.severity === "high";
@@ -70,10 +71,13 @@ export async function onRequestPost({ request, env }) {
       
       if (profanityResult.detected && spamResult.detected) {
         moderationReason = `Contains both profanity and spam patterns`;
+        flagType = "profanity_and_spam";
       } else if (profanityResult.detected) {
         moderationReason = `Profanity detected: ${profanityResult.patterns.join(", ")}`;
+        flagType = "profanity";
       } else if (spamResult.detected) {
         moderationReason = `Spam pattern detected: ${spamResult.patterns.join(", ")}`;
+        flagType = "spam";
       }
     }
 
@@ -81,16 +85,13 @@ export async function onRequestPost({ request, env }) {
     if (severity === "high") {
       // Log the flag
       await db.prepare(
-        "INSERT INTO moderation_flags (id,postId,userId,severity,reason,resolved,action,timestamp) VALUES (?,?,?,?,?,?,?,?)"
+        "INSERT INTO moderation_flags (postId,flagType,reason,autoAction,isReviewed) VALUES (?,?,?,?,?)"
       ).bind(
         generateUUID(),
-        generateUUID(), // temp post id for record
-        cu.id,
-        "high",
+        flagType,
         moderationReason,
-        true,
         "auto_deleted",
-        Date.now()
+        1
       ).run();
       
       return errResponse(`Content rejected: ${moderationReason}`, 400);
@@ -115,16 +116,13 @@ export async function onRequestPost({ request, env }) {
     // Flag if medium severity
     if (severity === "medium") {
       await db.prepare(
-        "INSERT INTO moderation_flags (id,postId,userId,severity,reason,resolved,action,timestamp) VALUES (?,?,?,?,?,?,?,?)"
+        "INSERT INTO moderation_flags (postId,flagType,reason,autoAction,isReviewed) VALUES (?,?,?,?,?)"
       ).bind(
-        generateUUID(),
         postId,
-        cu.id,
-        "medium",
+        flagType,
         moderationReason,
-        false,
         "flagged_for_review",
-        ts
+        0
       ).run();
     }
 
