@@ -370,7 +370,7 @@ function Av({ user, size=36 }) {
   );
 }
 
-function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError }) {
+function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onReport }) {
   const author = users.find(u=>u.id===post.authorId);
   const [open, setOpen] = useState(false);
   const [ct, setCt] = useState("");
@@ -378,6 +378,7 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
   const [playingUrl, setPlayingUrl] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState(null);
+  const [reporting, setReporting] = useState(false);
   if (!author) return null;
   const liked = post.likes.includes(cu.id);
   const isAuthor = post.authorId === cu.id;
@@ -407,6 +408,19 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
       setDeletingCommentId(null);
     }
   };
+
+  const handleReport = async () => {
+    setReporting(true);
+    try {
+      await onReport?.(post.id, post.authorId);
+      setShowDeleteMenu(false);
+    } catch (err) {
+      console.error("Report error:", err);
+      onError?.(err);
+    } finally {
+      setReporting(false);
+    }
+  };
   
   return (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, marginBottom:12, overflow:"hidden" }}>
@@ -421,16 +435,19 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
             <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>{fmtTime(post.timestamp)}</div>
           </div>
         </div>
-        {isAuthor && (
-          <div style={{ position:"relative" }}>
-            <button onClick={()=>setShowDeleteMenu(!showDeleteMenu)} disabled={deleting} style={{ background:"none", border:"none", cursor:deleting?"default":"pointer", color:C.textMuted, fontSize:16, padding:"0 4px", lineHeight:1, opacity:deleting?0.5:1 }}>⋯</button>
-            {showDeleteMenu && (
-              <div style={{ position:"absolute", top:"100%", right:0, background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, marginTop:4, zIndex:10, minWidth:140, boxShadow:"0 2px 8px rgba(0,0,0,0.1)" }}>
+        <div style={{ position:"relative" }}>
+          <button onClick={()=>setShowDeleteMenu(!showDeleteMenu)} disabled={deleting||reporting} style={{ background:"none", border:"none", cursor:deleting||reporting?"default":"pointer", color:C.textMuted, fontSize:16, padding:"0 4px", lineHeight:1, opacity:deleting||reporting?0.5:1 }}>⋯</button>
+          {showDeleteMenu && (
+            <div style={{ position:"absolute", top:"100%", right:0, background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, marginTop:4, zIndex:10, minWidth:160, boxShadow:"0 2px 8px rgba(0,0,0,0.1)" }}>
+              {isAuthor && (
                 <button onClick={handleDeletePost} disabled={deleting} style={{ width:"100%", background:"none", border:"none", cursor:deleting?"default":"pointer", color:deleting?C.border:"#d63031", fontSize:13, padding:"10px 12px", textAlign:"left", fontFamily:T.body, borderRadius:8, transition:"background 0.2s" }} onMouseEnter={e=>!deleting&&(e.target.style.background="#fff5f5")} onMouseLeave={e=>!deleting&&(e.target.style.background="none")}>{deleting?"Deleting…":"Delete post"}</button>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+              {!isAuthor && (
+                <button onClick={handleReport} disabled={reporting} style={{ width:"100%", background:"none", border:"none", cursor:reporting?"default":"pointer", color:reporting?C.border:"#ff9800", fontSize:13, padding:"10px 12px", textAlign:"left", fontFamily:T.body, borderRadius:8, transition:"background 0.2s" }} onMouseEnter={e=>!reporting&&(e.target.style.background="#fff8f0")} onMouseLeave={e=>!reporting&&(e.target.style.background="none")}>{reporting?"Reporting…":"Report post"}</button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <div style={{ padding:"0 16px 14px", fontSize:15, lineHeight:1.65, whiteSpace:"pre-wrap", fontFamily:T.body, color:C.text }}>
         <RichText content={post.content} />
@@ -577,7 +594,7 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
   );
 }
 
-function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError }) {
+function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onReport }) {
   const feed = [...posts].sort((a,b)=>b.timestamp-a.timestamp);
   return (
     <div>
@@ -591,7 +608,7 @@ function FeedScreen({ posts, users, cu, onLike, onComment, onDelete, onDeleteCom
           <div style={{ fontSize:16, fontWeight:600, marginBottom:8, fontFamily:T.body }}>Your feed is empty</div>
           <div style={{ fontSize:14, color:C.textMuted, fontFamily:T.body }}>Follow people from Explore to see their posts here.</div>
         </div>
-      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError}/>)}
+      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onReport={onReport}/>)}
     </div>
   );
 }
@@ -641,7 +658,7 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
                 <span style={{ fontSize:20, fontWeight:700, fontFamily:T.brand, color:C.accent }}>{selTag}</span>
                 <button onClick={()=>setSelTag(null)} style={{ background:C.border, border:"none", borderRadius:20, padding:"3px 10px", fontSize:11, cursor:"pointer", color:C.textMuted, fontFamily:T.body }}>✕ clear</button>
               </div>
-              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={()=>{}} onComment={()=>{}} onDelete={()=>{}} onDeleteComment={()=>{}} onUser={onUser}/>)}
+              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={()=>{}} onComment={()=>{}} onDelete={()=>{}} onDeleteComment={()=>{}} onUser={onUser} onReport={onReport}/>)}
               <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:16, marginTop:8 }}>
                 <div style={{ fontSize:12, color:C.textMuted, marginBottom:12, fontFamily:T.body }}>All tags</div>
               </div>
@@ -661,12 +678,38 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
   );
 }
 
-function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar }) {
+function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onBlock, onMute }) {
   const user = users.find(u=>u.id===uid);
   if (!user) return null;
   const isOwn = uid===cu.id;
   const following = cu.following.includes(uid);
+  const blocked = cu.blocked?.includes(uid) || false;
+  const muted = cu.muted?.includes(uid) || false;
+  const [blocking, setBlocking] = useState(false);
+  const [muting, setMuting] = useState(false);
   const userPosts = posts.filter(p=>p.authorId===uid).sort((a,b)=>b.timestamp-a.timestamp);
+
+  const handleBlock = async () => {
+    setBlocking(true);
+    try {
+      await onBlock?.(uid);
+    } catch (err) {
+      onError?.(err);
+    } finally {
+      setBlocking(false);
+    }
+  };
+
+  const handleMute = async () => {
+    setMuting(true);
+    try {
+      await onMute?.(uid);
+    } catch (err) {
+      onError?.(err);
+    } finally {
+      setMuting(false);
+    }
+  };
   return (
     <div>
       <button onClick={onBack} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:14, padding:"0 0 16px", fontFamily:T.body, display:"flex", alignItems:"center", gap:4 }}>← back</button>
@@ -680,7 +723,11 @@ function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComm
             </div>
           </div>
           {!isOwn && (
-            <button onClick={()=>onFollow(uid)} style={{ background:following?"none":C.accent, color:following?C.textMuted:"#fff", border:`1px solid ${following?C.borderStrong:C.accent}`, borderRadius:20, padding:"8px 20px", fontSize:13, cursor:"pointer", fontFamily:T.body, fontWeight:500, flexShrink:0 }}>{following?"Unfollow":"Follow"}</button>
+            <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+              <button onClick={()=>onFollow(uid)} style={{ background:following?"none":C.accent, color:following?C.textMuted:"#fff", border:`1px solid ${following?C.borderStrong:C.accent}`, borderRadius:20, padding:"8px 20px", fontSize:13, cursor:"pointer", fontFamily:T.body, fontWeight:500 }}>{following?"Unfollow":"Follow"}</button>
+              <button onClick={handleBlock} disabled={blocking} style={{ background:"none", border:`1px solid ${blocked?C.accent:C.borderStrong}`, color:blocked?C.accent:C.textMuted, borderRadius:20, padding:"8px 16px", fontSize:13, cursor:blocking?"default":"pointer", fontFamily:T.body, fontWeight:500, opacity:blocking?0.6:1 }}>{blocked?"Unblock":"Block"}</button>
+              <button onClick={handleMute} disabled={muting} style={{ background:"none", border:`1px solid ${muted?C.accent:C.borderStrong}`, color:muted?C.accent:C.textMuted, borderRadius:20, padding:"8px 16px", fontSize:13, cursor:muting?"default":"pointer", fontFamily:T.body, fontWeight:500, opacity:muting?0.6:1 }}>{muted?"Unmute":"Mute"}</button>
+            </div>
           )}
           {isOwn && (
             <button onClick={onEditAvatar} style={{ background:"none", border:`1px solid ${C.borderStrong}`, color:C.textMuted, borderRadius:20, padding:"8px 16px", fontSize:13, cursor:"pointer", fontFamily:T.body, fontWeight:500, flexShrink:0 }}>Edit avatar</button>
@@ -697,16 +744,44 @@ function ProfileScreen({ uid, users, posts, cu, onFollow, onBack, onLike, onComm
         </div>
       </div>
       {userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
-      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError}/>)}
+      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onReport={onReport}/>)}
     </div>
   );
 }
 
-function SettingsScreen({ cu, onLogout, onBack, onUpdate }) {
+function SettingsScreen({ cu, onLogout, onBack, onUpdate, users, onUnblock, onUnmute }) {
   const [dn, setDn] = useState(cu.displayName);
   const [bio, setBio] = useState(cu.bio||"");
   const [saved, setSaved] = useState(false);
+  const [expandBlocked, setExpandBlocked] = useState(false);
+  const [expandMuted, setExpandMuted] = useState(false);
+  const [unblocking, setUnblocking] = useState(null);
+  const [unmuting, setUnmuting] = useState(null);
+  
+  const blocked = cu.blocked || [];
+  const muted = cu.muted || [];
+  const blockedUsers = users.filter(u => blocked.includes(u.id));
+  const mutedUsers = users.filter(u => muted.includes(u.id));
+  
   const save = () => { onUpdate({ displayName:dn, bio }); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  
+  const handleUnblock = async (uid) => {
+    setUnblocking(uid);
+    try {
+      await onUnblock?.(uid);
+    } finally {
+      setUnblocking(null);
+    }
+  };
+  
+  const handleUnmute = async (uid) => {
+    setUnmuting(uid);
+    try {
+      await onUnmute?.(uid);
+    } finally {
+      setUnmuting(null);
+    }
+  };
   const privacyItems = [
     ["No data collection","We collect zero analytics or usage data"],
     ["No tracking","No cookies, no fingerprinting, no ad profiles"],
@@ -737,6 +812,50 @@ function SettingsScreen({ cu, onLogout, onBack, onUpdate }) {
           </div>
         ))}
       </div>
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
+        <div style={{ fontWeight:600, fontSize:16, marginBottom:14, fontFamily:T.body }}>Content Preferences</div>
+        
+        <div style={{ marginBottom:16 }}>
+          <button onClick={() => setExpandBlocked(!expandBlocked)} style={{ width:"100%", background:"none", border:"none", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", padding:"12px 0\", fontSize:14, fontFamily:T.body, fontWeight:500, color:C.text, borderBottom:`1px solid ${C.border}` }}>
+            <span>Blocked users ({blockedUsers.length})</span>
+            <span style={{ fontSize:12, color:C.textMuted }}>{expandBlocked?"▼":"▶"}</span>
+          </button>
+          {expandBlocked && blockedUsers.length > 0 && (
+            <div style={{ marginTop:10, display:"flex", flexDirection:"column", gap:8 }}>
+              {blockedUsers.map(u => (
+                <div key={u.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:10, background:C.bg, borderRadius:8 }}>
+                  <span style={{ fontSize:14, fontFamily:T.body }}>{u.displayName} <span style={{ color:C.textMuted }}>@{u.username}</span></span>
+                  <button onClick={() => handleUnblock(u.id)} disabled={unblocking === u.id} style={{ background:"none", border:"none", color:C.accent, cursor:unblocking === u.id?"default":"pointer", fontSize:12, fontFamily:T.body, opacity:unblocking === u.id?0.6:1 }}>{unblocking === u.id?"…":"Unblock"}</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {expandBlocked && blockedUsers.length === 0 && (
+            <div style={{ padding:10, color:C.textMuted, fontSize:13, fontFamily:T.body }}>No blocked users</div>
+          )}
+        </div>
+        
+        <div>
+          <button onClick={() => setExpandMuted(!expandMuted)} style={{ width:"100%", background:"none", border:"none", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", padding:"12px 0", fontSize:14, fontFamily:T.body, fontWeight:500, color:C.text, borderBottom:`1px solid ${C.border}` }}>
+            <span>Muted users ({mutedUsers.length})</span>
+            <span style={{ fontSize:12, color:C.textMuted }}>{expandMuted?"▼":"▶"}</span>
+          </button>
+          {expandMuted && mutedUsers.length > 0 && (
+            <div style={{ marginTop:10, display:"flex", flexDirection:"column", gap:8 }}>
+              {mutedUsers.map(u => (
+                <div key={u.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:10, background:C.bg, borderRadius:8 }}>
+                  <span style={{ fontSize:14, fontFamily:T.body }}>{u.displayName} <span style={{ color:C.textMuted }}>@{u.username}</span></span>
+                  <button onClick={() => handleUnmute(u.id)} disabled={unmuting === u.id} style={{ background:"none", border:"none", color:C.accent, cursor:unmuting === u.id?"default":"pointer", fontSize:12, fontFamily:T.body, opacity:unmuting === u.id?0.6:1 }}>{unmuting === u.id?"…":"Unmute"}</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {expandMuted && mutedUsers.length === 0 && (
+            <div style={{ padding:10, color:C.textMuted, fontSize:13, fontFamily:T.body }}>No muted users</div>
+          )}
+        </div>
+      </div>
+      
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
         <button onClick={onLogout} style={{ background:"none", border:`1px solid ${C.accent}`, color:C.accent, borderRadius:8, padding:"10px 20px", fontSize:14, cursor:"pointer", fontFamily:T.body }}>Sign out</button>
       </div>
@@ -1136,6 +1255,96 @@ export default function Agora() {
     setUsers(prev => prev.map(u => u.id === cu.id ? res : u));
   };
 
+  const report = async (postId, authorId) => {
+    try {
+      const res = await api.post(`/api/posts/${postId}/report`, { authorId }, token);
+      if (res.error) {
+        setToast({ message: res.error, type: "error" });
+        return;
+      }
+      setToast({ message: "Report submitted. Thank you for helping keep Agora safe.", type: "success" });
+    } catch (err) {
+      setToast({ message: "Failed to report post.", type: "error" });
+      throw err;
+    }
+  };
+
+  const block = async (uid) => {
+    try {
+      const res = await api.post(`/api/users/${uid}/block`, {}, token);
+      if (res.error) {
+        setToast({ message: res.error, type: "error" });
+        return;
+      }
+      // Optimistic update
+      const newBlocked = [...(cu.blocked || []), uid];
+      const newCu = { ...cu, blocked: newBlocked };
+      setCu(newCu);
+      localStorage.setItem("ag_cu", JSON.stringify(newCu));
+      setToast({ message: "User blocked.", type: "success" });
+    } catch (err) {
+      setToast({ message: "Failed to block user.", type: "error" });
+      throw err;
+    }
+  };
+
+  const unblock = async (uid) => {
+    try {
+      const res = await api.post(`/api/users/${uid}/unblock`, {}, token);
+      if (res.error) {
+        setToast({ message: res.error, type: "error" });
+        return;
+      }
+      // Optimistic update
+      const newBlocked = (cu.blocked || []).filter(id => id !== uid);
+      const newCu = { ...cu, blocked: newBlocked };
+      setCu(newCu);
+      localStorage.setItem("ag_cu", JSON.stringify(newCu));
+      setToast({ message: "User unblocked.", type: "success" });
+    } catch (err) {
+      setToast({ message: "Failed to unblock user.", type: "error" });
+      throw err;
+    }
+  };
+
+  const mute = async (uid) => {
+    try {
+      const res = await api.post(`/api/users/${uid}/mute`, {}, token);
+      if (res.error) {
+        setToast({ message: res.error, type: "error" });
+        return;
+      }
+      // Optimistic update
+      const newMuted = [...(cu.muted || []), uid];
+      const newCu = { ...cu, muted: newMuted };
+      setCu(newCu);
+      localStorage.setItem("ag_cu", JSON.stringify(newCu));
+      setToast({ message: "User muted.", type: "success" });
+    } catch (err) {
+      setToast({ message: "Failed to mute user.", type: "error" });
+      throw err;
+    }
+  };
+
+  const unmute = async (uid) => {
+    try {
+      const res = await api.post(`/api/users/${uid}/unmute`, {}, token);
+      if (res.error) {
+        setToast({ message: res.error, type: "error" });
+        return;
+      }
+      // Optimistic update
+      const newMuted = (cu.muted || []).filter(id => id !== uid);
+      const newCu = { ...cu, muted: newMuted };
+      setCu(newCu);
+      localStorage.setItem("ag_cu", JSON.stringify(newCu));
+      setToast({ message: "User unmuted.", type: "success" });
+    } catch (err) {
+      setToast({ message: "Failed to unmute user.", type: "error" });
+      throw err;
+    }
+  };
+
   const [editingAvatar, setEditingAvatar] = useState(false);
 
   const handleSaveAvatar = async (data) => {
@@ -1196,11 +1405,11 @@ export default function Agora() {
       <div style={{ maxWidth:600, margin:"0 auto", padding:"20px 16px 100px" }}>
         {screen==="feed" && <>
           <PWAInstallButton />
-          <FeedScreen posts={posts} users={users} cu={cu} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})}/>
+          <FeedScreen posts={posts} users={users} cu={cu} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onReport={report}/>
         </>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)}/>}
-        {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onBlock={block} onMute={mute}/>}
+        {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} users={users} onUnblock={unblock} onUnmute={unmute}/>}
       </div>
 
       <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.surface, borderTop:`1px solid ${C.border}`, display:"flex", padding:"8px 0 18px", zIndex:50 }}>
