@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { PWAInstallButton } from "./components/PWAInstallButton";
+import AdminDashboard from "./AdminDashboard";
 
 const C = {
   bg: "#e6edf2",
@@ -428,7 +429,7 @@ function PostCard({ post, users, cu, onLike, onComment, onDelete, onDeleteCommen
       </div>
       {post.url && (() => {
         const url = post.url;
-        const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]+)/);
+        const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)[\w-]+/);
         const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
         const ttMatch = url.match(/tiktok\.com/);
         if (ytMatch) {
@@ -735,7 +736,7 @@ function ComposeModal({ cu, token, onPost, onClose }) {
 
   const getVideoEmbed = (url) => {
     if (!url) return null;
-    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)[\w-]+/);
     if (ytMatch) return { type: "youtube", id: ytMatch[1] };
     const ttMatch = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/);
     if (ttMatch) return { type: "tiktok", id: ttMatch[1], url };
@@ -1099,6 +1100,7 @@ export default function Agora() {
     {id:"explore",label:"Explore",icon:"◎"},
     {id:"compose",label:"",icon:"+",special:true},
     {id:"myprofile",label:"Me",icon:null},
+    {id:"admin",label:"Admin",icon:"🛡️",adminOnly:true},
     {id:"settings",label:"More",icon:"⚙"},
   ];
 
@@ -1134,11 +1136,15 @@ export default function Agora() {
         </>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow}/>}
         {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)}/>}
+        {screen==="admin" && cu.is_admin && <AdminDashboard cu={cu} users={users} posts={posts} token={token} onBack={()=>setScreen("feed")} />}
         {screen==="settings" && <SettingsScreen cu={cu} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile}/>}
       </div>
 
       <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.surface, borderTop:`1px solid ${C.border}`, display:"flex", padding:"8px 0 18px", zIndex:50 }}>
         {navItems.map(item=>{
+          // Hide admin button if user is not admin
+          if(item.adminOnly && !cu.is_admin) return null;
+          
           const active=screen===item.id||(item.id==="myprofile"&&screen==="profile"&&profileUid===cu.id);
           return (
             <button key={item.id} onClick={()=>nav(item.id)} style={{ flex:1, background:"none", border:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:3, cursor:"pointer", color:active?C.accent:C.textMuted }}>
