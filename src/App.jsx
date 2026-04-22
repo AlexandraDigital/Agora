@@ -174,7 +174,7 @@ const App = () => {
         <div className="bg-white p-6 rounded-lg border border-gray-200">
           <div className="flex items-start justify-between">
             <div>
-              <div className="text-6xl mb-3">{isEditingProfile && isOwnProfile ? avatarPreview ? '📸' : user.avatar : user.avatar}</div>
+              <div className="text-6xl mb-3">{isEditingProfile && isOwnProfile ? avatarPreview ? '📷' : user.avatar : user.avatar}</div>
               <h2 className="text-2xl font-bold">{user.displayName}</h2>
               <p className="text-gray-500">@{user.id}</p>
             </div>
@@ -196,7 +196,7 @@ const App = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Avatar</label>
                 <input type="file" accept="image/*" onChange={handleAvatarChange} className="block" />
-                {avatarPreview && <div className="mt-2 text-4xl">{avatarPreview ? '📸' : user.avatar}</div>}
+                {avatarPreview && <div className="mt-2 text-4xl">{avatarPreview ? '📷' : user.avatar}</div>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Bio</label>
@@ -332,8 +332,8 @@ const App = () => {
         <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-blue-600">Agora</h1>
           <div className="hidden md:flex items-center gap-1">
-            {['feed', 'explore', 'me'].map(tab => (
-              <button key={tab} onClick={() => setScreen(tab)} className={`px-4 py-2 font-medium text-sm transition ${ screen === tab ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:text-gray-900' }`}>
+            {['feed', 'explore', 'profile'].map(tab => (
+              <button key={tab} onClick={() => setScreen(tab === 'profile' ? 'me' : tab)} className={`px-4 py-2 font-medium text-sm transition ${ screen === (tab === 'profile' ? 'me' : tab) ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:text-gray-900' }`}>
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
@@ -352,8 +352,8 @@ const App = () => {
         </div>
         {mobileMenuOpen && (
           <div className="md:hidden bg-white border-t border-gray-200 p-4 space-y-2">
-            {['feed', 'explore', 'me'].map(tab => (
-              <button key={tab} onClick={() => { setScreen(tab); setMobileMenuOpen(false); }} className={`w-full text-left px-4 py-2 rounded font-medium text-sm transition ${ screen === tab ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100' }`}>
+            {['feed', 'explore', 'profile'].map(tab => (
+              <button key={tab} onClick={() => { setScreen(tab === 'profile' ? 'me' : tab); setMobileMenuOpen(false); }} className={`w-full text-left px-4 py-2 rounded font-medium text-sm transition ${ screen === (tab === 'profile' ? 'me' : tab) ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100' }`}>
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
