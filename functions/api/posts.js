@@ -30,8 +30,12 @@ export async function onRequestGet({ request, env }) {
           SELECT targetUserId FROM user_moderation 
           WHERE userId = ? AND action = 'mute'
         )
+        AND p.authorId NOT IN (
+          SELECT userId FROM user_moderation 
+          WHERE targetUserId = ? AND action = 'block'
+        )
       ORDER BY p.timestamp DESC LIMIT 100
-    `).bind(cu.id, cu.id, cu.id).all();
+    `).bind(cu.id, cu.id, cu.id, cu.id).all();
   } else {
     rows = await db.prepare("SELECT * FROM posts ORDER BY timestamp DESC LIMIT 100").all();
   }
