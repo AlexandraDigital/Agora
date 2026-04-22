@@ -1,19 +1,19 @@
-import { verifyAuth, jsonResponse, errResponse } from "../../../_helpers.js";
+import { verifyAuth, jsonResponse, errResponse } from '../../_helpers.js';
 
-const ADMIN_USERS = ["alex12g"];
+const ADMIN_USERS = ['alex12g'];
 
 export async function onRequestGet({ request, env }) {
   try {
     const db = env.DB;
     const cu = await verifyAuth(request, db);
-    if (!cu) return errResponse("Unauthorized", 401);
+    if (!cu) return errResponse('Unauthorized', 401);
 
     if (!ADMIN_USERS.includes(cu.id)) {
-      return errResponse("Admin access required", 403);
+      return errResponse('Admin access required', 403);
     }
 
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get("status") || "all";
+    const status = searchParams.get('status') || 'all';
 
     let query = `
       SELECT 
@@ -36,13 +36,13 @@ export async function onRequestGet({ request, env }) {
       JOIN users u ON p.authorId = u.id
     `;
 
-    if (status === "pending") {
+    if (status === 'pending') {
       query += " WHERE pr.status IS NULL OR pr.status = 'pending'";
-    } else if (status === "reviewed") {
+    } else if (status === 'reviewed') {
       query += " WHERE pr.status = 'reviewed'";
     }
 
-    query += " ORDER BY pr.timestamp DESC LIMIT 100";
+    query += ' ORDER BY pr.timestamp DESC LIMIT 100';
 
     const result = await db.prepare(query).all();
 
@@ -75,13 +75,13 @@ export async function onRequestGet({ request, env }) {
     const flags = Object.values(flagsMap);
     
     // Get all users for the frontend
-    const usersResult = await db.prepare("SELECT * FROM users").all();
+    const usersResult = await db.prepare('SELECT * FROM users').all();
     const users = usersResult.results || [];
 
     return jsonResponse({ flags, users });
   } catch (err) {
-    console.error("Admin moderation error:", err);
-    return errResponse("Failed to fetch flags: " + err.message, 500);
+    console.error('Admin moderation error:', err);
+    return errResponse('Failed to fetch flags: ' + err.message, 500);
   }
 }
 
@@ -89,10 +89,10 @@ export async function onRequestPut({ request, params, env }) {
   try {
     const db = env.DB;
     const cu = await verifyAuth(request, db);
-    if (!cu) return errResponse("Unauthorized", 401);
+    if (!cu) return errResponse('Unauthorized', 401);
 
     if (!ADMIN_USERS.includes(cu.id)) {
-      return errResponse("Admin access required", 403);
+      return errResponse('Admin access required', 403);
     }
 
     const flagId = params.id;
@@ -100,13 +100,13 @@ export async function onRequestPut({ request, params, env }) {
 
     // Mark all reports for this post as reviewed
     await db.prepare(
-      "UPDATE post_reports SET status = ? WHERE id = ?"
+      'UPDATE post_reports SET status = ? WHERE id = ?'
     ).bind(reviewed ? 'reviewed' : 'pending', flagId).run();
 
     return jsonResponse({ success: true });
   } catch (err) {
-    console.error("Approve error:", err);
-    return errResponse("Failed to approve: " + err.message, 500);
+    console.error('Approve error:', err);
+    return errResponse('Failed to approve: ' + err.message, 500);
   }
 }
 
@@ -114,16 +114,16 @@ export async function onRequestDelete({ request, params, env }) {
   try {
     const db = env.DB;
     const cu = await verifyAuth(request, db);
-    if (!cu) return errResponse("Unauthorized", 401);
+    if (!cu) return errResponse('Unauthorized', 401);
 
     if (!ADMIN_USERS.includes(cu.id)) {
-      return errResponse("Admin access required", 403);
+      return errResponse('Admin access required', 403);
     }
 
     const postId = params.id;
 
     // Delete the post
-    await db.prepare("DELETE FROM posts WHERE id = ?").bind(postId).run();
+    await db.prepare('DELETE FROM posts WHERE id = ?').bind(postId).run();
 
     // Mark all reports for this post as actioned
     await db.prepare(
@@ -132,7 +132,7 @@ export async function onRequestDelete({ request, params, env }) {
 
     return jsonResponse({ success: true });
   } catch (err) {
-    console.error("Delete error:", err);
-    return errResponse("Failed to delete post: " + err.message, 500);
+    console.error('Delete error:', err);
+    return errResponse('Failed to delete post: ' + err.message, 500);
   }
 }
