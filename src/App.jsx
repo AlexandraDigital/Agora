@@ -23,9 +23,9 @@ const T = {
 };
 
 // ── API config ───────────────────────────────────────────────────
-// In development: set VITE_API_URL in a .env.local file.
-// In production:  set VITE_API_URL in Cloudflare Pages environment variables.
-const API = "https://agora-e65.pages.dev";
+// In development: set VITE_API_URL in a .env.local file (or leave empty to use relative URLs via Vite proxy).
+// In production:  leave empty — relative paths work on Cloudflare Pages automatically.
+const API = import.meta.env.VITE_API_URL ?? "";
 
 const authHeaders = (token) => ({
   "Content-Type": "application/json",
@@ -1253,25 +1253,30 @@ function ComposeModal({ cu, token, onPost, onClose }) {
 }
 
 function AuthScreen({ onLogin, onSignup }) {
-  const [mode, setMode] = useState("signup");
+  const [mode, setMode] = useState("login");
   const [un, setUn] = useState(""); const [pw, setPw] = useState("");
   const [dn, setDn] = useState(""); const [bio, setBio] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     setErr(""); setBusy(true);
-    if (mode==="login") {
-      const ok = await onLogin(un, pw);
-      if (!ok) setErr("Username or password incorrect.");
-    } else {
-      if(!un||!pw||!dn){ setErr("Please fill in all required fields."); setBusy(false); return; }
-      if(un.length<3){ setErr("Username must be at least 3 characters."); setBusy(false); return; }
-      if(pw.length<8){ setErr("Password must be at least 8 characters."); setBusy(false); return; }
-      if(!/^[a-z0-9_]+$/.test(un)){ setErr("Username can only contain letters, numbers, underscores."); setBusy(false); return; }
-      const res = await onSignup(un, pw, dn, bio);
-      if (res !== true) setErr(res || "Username already taken.");
+    try {
+      if (mode==="login") {
+        const ok = await onLogin(un, pw);
+        if (!ok) setErr("Username or password incorrect.");
+      } else {
+        if(!un||!pw||!dn){ setErr("Please fill in all required fields."); return; }
+        if(un.length<3){ setErr("Username must be at least 3 characters."); return; }
+        if(pw.length<8){ setErr("Password must be at least 8 characters."); return; }
+        if(!/^[a-z0-9_]+$/.test(un)){ setErr("Username can only contain letters, numbers, underscores."); return; }
+        const res = await onSignup(un, pw, dn, bio);
+        if (res !== true) setErr(res || "Username already taken.");
+      }
+    } catch (e) {
+      setErr("Network error. Please check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
   return (
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
@@ -1324,11 +1329,25 @@ export default function Agora() {
 
   // Restore session from localStorage (token + user only — posts/users come from API)
   useEffect(() => {
-    const savedToken = localStorage.getItem("ag_token");
-    const savedUser  = localStorage.getItem("ag_cu");
-    if (savedToken && savedUser) {
-      setToken(savedToken);
-      setCu(JSON.parse(savedUser));
+    try {
+      const savedToken = localStorage.getItem("ag_token");
+      const savedUser  = localStorage.getItem("ag_cu");
+      if (savedToken && savedUser) {
+        const parsed = JSON.parse(savedUser);
+        // Guard against stale user objects missing required array fields
+        if (parsed && parsed.id) {
+          parsed.following = parsed.following || [];
+          parsed.followers = parsed.followers || [];
+          parsed.blocked   = parsed.blocked   || [];
+          parsed.muted     = parsed.muted     || [];
+          setToken(savedToken);
+          setCu(parsed);
+        }
+      }
+    } catch (e) {
+      // Corrupted localStorage — clear it and show auth screen
+      localStorage.removeItem("ag_token");
+      localStorage.removeItem("ag_cu");
     }
     setLoading(false);
   }, []);
@@ -1352,21 +1371,39 @@ export default function Agora() {
   }, [cu?.id]);
 
   const login = async (un, pw) => {
-    const res = await api.post("/api/login", { username: un, password: pw });
-    if (res.error) return false;
-    setCu(res.user); setToken(res.token);
-    localStorage.setItem("ag_token", res.token);
-    localStorage.setItem("ag_cu", JSON.stringify(res.user));
-    return true;
+    try {
+      const res = await api.post("/api/login", { username: un, password: pw });
+      if (res.error) return false;
+      const user = res.user;
+      user.following = user.following || [];
+      user.followers = user.followers || [];
+      user.blocked   = user.blocked   || [];
+      user.muted     = user.muted     || [];
+      setCu(user); setToken(res.token);
+      localStorage.setItem("ag_token", res.token);
+      localStorage.setItem("ag_cu", JSON.stringify(user));
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const signup = async (un, pw, dn, bio) => {
-    const res = await api.post("/api/signup", { username:un, password:pw, displayName:dn, bio });
-    if (res.error) return res.error;
-    setCu(res.user); setToken(res.token);
-    localStorage.setItem("ag_token", res.token);
-    localStorage.setItem("ag_cu", JSON.stringify(res.user));
-    return true;
+    try {
+      const res = await api.post("/api/signup", { username:un, password:pw, displayName:dn, bio });
+      if (res.error) return res.error;
+      const user = res.user;
+      user.following = user.following || [];
+      user.followers = user.followers || [];
+      user.blocked   = user.blocked   || [];
+      user.muted     = user.muted     || [];
+      setCu(user); setToken(res.token);
+      localStorage.setItem("ag_token", res.token);
+      localStorage.setItem("ag_cu", JSON.stringify(user));
+      return true;
+    } catch {
+      return "Network error. Please try again.";
+    }
   };
 
   const logout = () => {
@@ -1569,6 +1606,11 @@ export default function Agora() {
       let res;
       try { res = JSON.parse(text); } catch { alert("Save failed: " + text); return; }
       if (!raw.ok || res.error) { alert("Save failed: " + (res.error || raw.status)); return; }
+      // Normalize array fields so nothing crashes if API omits them
+      res.following = res.following || [];
+      res.followers = res.followers || [];
+      res.blocked   = res.blocked   || [];
+      res.muted     = res.muted     || [];
       setCu(res);
       localStorage.setItem("ag_cu", JSON.stringify(res));
       setUsers(prev => prev.map(u => u.id === cu.id ? res : u));
