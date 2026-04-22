@@ -1,4 +1,5 @@
 import { verifyAuth, shapePost, jsonResponse, errResponse } from "./_helpers.js";
+import { detectProfanity, detectSpam } from "./moderation.js";
 
 // Simple UUID v4 generator using Web Crypto API
 function generateUUID() {
@@ -48,8 +49,50 @@ export async function onRequestPost({ request, env }) {
     const url = body.url;
     if (!content?.trim()) return errResponse("Content required", 400);
 
+    // Run moderation checks
+    const profanityResult = detectProfanity(content);
+    const spamResult = detectSpam(content);
+
+    // Determine severity and action
+    let severity = "none";
+    let moderationReason = null;
+
+    if (profanityResult.detected || spamResult.detected) {
+      const isCritical = profanityResult.severity === "high" || spamResult.severity === "high";
+      severity = isCritical ? "high" : "medium";
+      
+      if (profanityResult.detected && spamResult.detected) {
+        moderationReason = `Contains both profanity and spam patterns`;
+      } else if (profanityResult.detected) {
+        moderationReason = `Profanity detected: ${profanityResult.patterns.join(", ")}`;
+      } else if (spamResult.detected) {
+        moderationReason = `Spam pattern detected: ${spamResult.patterns.join(", ")}`;
+      }
+    }
+
+    // Auto-delete high-severity content
+    if (severity === "high") {
+      // Log the flag
+      await db.prepare(
+        "INSERT INTO moderation_flags (id,postId,userId,severity,reason,resolved,action,timestamp) VALUES (?,?,?,?,?,?,?,?)"
+      ).bind(
+        generateUUID(),
+        generateUUID(), // temp post id for record
+        cu.id,
+        "high",
+        moderationReason,
+        true,
+        "auto_deleted",
+        Date.now()
+      ).run();
+      
+      return errResponse(`Content rejected: ${moderationReason}`, 400);
+    }
+
     const postId = generateUUID();
     const ts = Date.now();
+    
+    // Insert post
     await db.prepare(
       "INSERT INTO posts (id,authorId,content,mediaType,mediaData,mediaVideoUrl,url,timestamp) VALUES (?,?,?,?,?,?,?,?)"
     ).bind(
@@ -61,6 +104,22 @@ export async function onRequestPost({ request, env }) {
       url ?? null,
       ts
     ).run();
+
+    // Flag if medium severity
+    if (severity === "medium") {
+      await db.prepare(
+        "INSERT INTO moderation_flags (id,postId,userId,severity,reason,resolved,action,timestamp) VALUES (?,?,?,?,?,?,?,?)"
+      ).bind(
+        generateUUID(),
+        postId,
+        cu.id,
+        "medium",
+        moderationReason,
+        false,
+        "flagged_for_review",
+        ts
+      ).run();
+    }
 
     const row = await db.prepare(
       "SELECT * FROM posts WHERE id=?"

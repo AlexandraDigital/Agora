@@ -169,3 +169,68 @@ export function determineModerationAction(textDetection, imageDetection) {
 export function applyUserFilters(post, currentUserId, db) {
   return post;
 }
+
+/**
+ * Detect profanity in text
+ * Simple wrapper for posts.js integration
+ */
+export function detectProfanity(text) {
+  if (!text) return { detected: false, patterns: [], severity: 'low' };
+
+  const lowerText = text.toLowerCase();
+  const detectedPatterns = [];
+
+  for (const word of PROFANITY_LIST) {
+    if (lowerText.includes(word)) {
+      detectedPatterns.push(word);
+    }
+  }
+
+  // Also check hate speech
+  for (const pattern of HATE_PATTERNS) {
+    if (pattern.test(text)) {
+      detectedPatterns.push('hate speech');
+    }
+  }
+
+  return {
+    detected: detectedPatterns.length > 0,
+    patterns: detectedPatterns,
+    severity: detectedPatterns.length > 0 ? 'high' : 'low'
+  };
+}
+
+/**
+ * Detect spam in text
+ * Simple wrapper for posts.js integration
+ */
+export function detectSpam(text) {
+  if (!text) return { detected: false, patterns: [], severity: 'low' };
+
+  const detectedPatterns = [];
+
+  for (const pattern of SPAM_PATTERNS) {
+    if (pattern.test(text)) {
+      detectedPatterns.push('spam');
+      break; // Only add once
+    }
+  }
+
+  // Check for excessive URLs
+  const urlMatches = (text.match(/https?:\/\//gi) || []).length;
+  if (urlMatches > 2) {
+    detectedPatterns.push('excessive-urls');
+  }
+
+  // Check for excessive caps
+  const capsMatches = (text.match(/[A-Z]{4,}/g) || []).length;
+  if (capsMatches > 2) {
+    detectedPatterns.push('excessive-caps');
+  }
+
+  return {
+    detected: detectedPatterns.length > 0,
+    patterns: detectedPatterns,
+    severity: detectedPatterns.length > 0 ? 'high' : 'low'
+  };
+}
