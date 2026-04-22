@@ -13,9 +13,17 @@ function generateUUID() {
  * Returns object with detected, severity, and patterns
  */
 export function detectProfanity(text) {
-  // Profanity patterns to detect
+  // Comprehensive profanity patterns - detects common offensive words
+  // Uses word boundaries and common leetspeak/bypass variations
   const profanityPatterns = [
-    /\b(badword|profanity|offensive)\b/gi,
+    // Common profanities with variations (leetspeak, special chars)
+    /\b(damn|hell|crap|arse|arsehole|bastard|bloody|suck|sucks|sucks?\b)/gi,
+    // Severe profanities with variations
+    /\b(f[u!@]ck|f[u!@]ck(?:ing|er|ed)?|sh[i!1]t|sh[i!1]tt?y|ass|asshole|bitch|bitches?|dick|dickhead|piss(?:ed|y)?)/gi,
+    // Variations with special characters
+    /f[*@]ck|sh[*!]t|@ss|b[i1]tch|d[i1]ck/gi,
+    // Repeated characters for emphasis
+    /(\w)\1{4,}(curse|swear|damn|hell)/gi,
   ];
   
   const detected = profanityPatterns.some(pattern => pattern.test(text));
@@ -24,14 +32,14 @@ export function detectProfanity(text) {
   if (detected) {
     profanityPatterns.forEach(pattern => {
       const matches = text.match(pattern);
-      if (matches) patterns.push(...matches.map(m => m.toLowerCase()));
+      if (matches) patterns.push(...matches.map(m => m.toLowerCase()).slice(0, 2));
     });
   }
   
   return {
     detected: detected,
     severity: detected ? "high" : "none",
-    patterns: patterns
+    patterns: [...new Set(patterns)] // deduplicate
   };
 }
 
@@ -43,8 +51,9 @@ export function detectSpam(text) {
   // Spam patterns to detect
   const spamPatterns = [
     /(?:http|ftp)s?:\/\/[^\s]+/gi,  // URLs
-    /\$+|bitcoin|crypto|nft/gi,      // Crypto/financial spam
+    /\b(?:\$+|bitcoin|crypto|nft|ethereum|dogecoin|ethereum|ripple|cardano)\b/gi,  // Crypto/financial spam
     /(\w)\1{4,}/gi,                  // Repeated characters
+    /(?:click|buy|invest|join|free|win|earn|cash|money)\s+(?:now|here|fast|easy)(?:\s+[!@#$%]){1,}/gi, // Common spam phrases
   ];
   
   const detected = spamPatterns.some(pattern => pattern.test(text));
@@ -60,7 +69,7 @@ export function detectSpam(text) {
   return {
     detected: detected,
     severity: detected ? "medium" : "none",
-    patterns: patterns
+    patterns: [...new Set(patterns)] // deduplicate
   };
 }
 
