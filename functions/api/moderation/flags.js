@@ -11,7 +11,7 @@ export async function onRequestGet({ request, env }) {
     if (!cu) return errResponse("Unauthorized", 401);
 
     // Admin-only check
-    if (cu.id !== "alex12g") {
+    if (cu.username !== "alex12g") {
       return errResponse("Forbidden", 403);
     }
 
@@ -81,7 +81,7 @@ export async function onRequestPut({ request, params, env }) {
     if (!cu) return errResponse("Unauthorized", 401);
 
     // Admin-only check
-    if (cu.id !== "alex12g") {
+    if (cu.username !== "alex12g") {
       return errResponse("Forbidden", 403);
     }
 
@@ -112,7 +112,7 @@ export async function onRequestPost({ request, env }) {
     if (!cu) return errResponse("Unauthorized", 401);
 
     // Admin-only check
-    if (cu.id !== "alex12g") {
+    if (cu.username !== "alex12g") {
       return errResponse("Forbidden", 403);
     }
 
