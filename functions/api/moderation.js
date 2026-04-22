@@ -9,6 +9,62 @@ function generateUUID() {
 }
 
 /**
+ * Detect profanity in text
+ * Returns object with detected, severity, and patterns
+ */
+export function detectProfanity(text) {
+  // Profanity patterns to detect
+  const profanityPatterns = [
+    /\b(badword|profanity|offensive)\b/gi,
+  ];
+  
+  const detected = profanityPatterns.some(pattern => pattern.test(text));
+  const patterns = [];
+  
+  if (detected) {
+    profanityPatterns.forEach(pattern => {
+      const matches = text.match(pattern);
+      if (matches) patterns.push(...matches.map(m => m.toLowerCase()));
+    });
+  }
+  
+  return {
+    detected: detected,
+    severity: detected ? "high" : "none",
+    patterns: patterns
+  };
+}
+
+/**
+ * Detect spam in text
+ * Returns object with detected, severity, and patterns
+ */
+export function detectSpam(text) {
+  // Spam patterns to detect
+  const spamPatterns = [
+    /(?:http|ftp)s?:\/\/[^\s]+/gi,  // URLs
+    /\$+|bitcoin|crypto|nft/gi,      // Crypto/financial spam
+    /(\w)\1{4,}/gi,                  // Repeated characters
+  ];
+  
+  const detected = spamPatterns.some(pattern => pattern.test(text));
+  const patterns = [];
+  
+  if (detected) {
+    spamPatterns.forEach(pattern => {
+      const matches = text.match(pattern);
+      if (matches) patterns.push(...matches.slice(0, 3).map(m => m.toLowerCase()));
+    });
+  }
+  
+  return {
+    detected: detected,
+    severity: detected ? "medium" : "none",
+    patterns: patterns
+  };
+}
+
+/**
  * Report a post
  * POST /api/moderation/report
  * Body: { postId, reason }
