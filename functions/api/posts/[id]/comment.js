@@ -1,4 +1,4 @@
-import { verifyAuth, jsonResponse, errResponse } from "../../_helpers.js";
+import { verifyAuth, jsonResponse, errResponse, isBlocked } from "../../_helpers.js";
 
 export async function onRequestPost({ request, params, env }) {
   const db = env.DB;
@@ -7,6 +7,13 @@ export async function onRequestPost({ request, params, env }) {
 
   const { text } = await request.json();
   if (!text?.trim()) return errResponse("Text required", 400);
+
+  // Check block between commenter and post author
+  const post = await db.prepare("SELECT authorId FROM posts WHERE id=?").bind(params.id).first();
+  if (post && post.authorId !== cu.id) {
+    const blocked = await isBlocked(db, cu.id, post.authorId);
+    if (blocked) return errResponse("Not found", 404);
+  }
 
   const id = `c_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
   await db.prepare(
