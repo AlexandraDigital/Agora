@@ -16,6 +16,18 @@ export function errResponse(msg, status = 400) {
   return jsonResponse({ error: msg }, status);
 }
 
+export async function isBlocked(db, viewerId, targetId) {
+  // Returns true if either user has blocked the other
+  const row = await db.prepare(
+    `SELECT 1 FROM user_moderation 
+     WHERE action='block' AND (
+       (userId=? AND targetUserId=?) OR
+       (userId=? AND targetUserId=?)
+     ) LIMIT 1`
+  ).bind(String(viewerId), String(targetId), String(targetId), String(viewerId)).first();
+  return !!row;
+}
+
 export async function hashPassword(password) {
   return bcrypt.hash(password, 10);
 }
