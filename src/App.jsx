@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { PWAInstallButton } from "./components/PWAInstallButton";
 import { ThreadedComments } from "./ThreadedComments";
+import { DiscussionPrompt } from "./DiscussionPrompt";
+import { generateDiscussionPrompt } from "./discussionPrompts";
 
 const C = {
   bg: "#e6edf2",
@@ -379,6 +381,9 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
   const [reportReason, setReportReason] = useState("");
   const [reporting, setReporting] = useState(false);
   const [editingPost, setEditingPost] = useState(false);
+  const [discussionPrompt, setDiscussionPrompt] = useState(
+    post.discussionPrompt || generateDiscussionPrompt(post.content)
+  );
   if (!author) return null;
   const liked = post.likes.includes(cu.id);
   const isAuthor = post.authorId === cu.id;
@@ -554,24 +559,33 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
         </button>
       </div>
       {open && (
-        <ThreadedComments
-          postId={post.id}
-          comments={post.comments || []}
-          users={users}
-          currentUser={cu}
-          onAddComment={(postId, text, parentCommentId) => {
-            if (parentCommentId) {
-              // Reply to a comment
-              doCommentReply(postId, text, parentCommentId);
-            } else {
-              // Top-level comment
-              setCt(text);
-              doComment();
-            }
-          }}
-          onDeleteComment={handleDeleteComment}
-          onUser={onUser}
-        />
+        <>
+          <div style={{ padding: "0 16px" }}>
+            <DiscussionPrompt
+              postText={post.content}
+              initialPrompt={discussionPrompt}
+              onPromptChange={setDiscussionPrompt}
+            />
+          </div>
+          <ThreadedComments
+            postId={post.id}
+            comments={post.comments || []}
+            users={users}
+            currentUser={cu}
+            onAddComment={(postId, text, parentCommentId) => {
+              if (parentCommentId) {
+                // Reply to a comment
+                doCommentReply(postId, text, parentCommentId);
+              } else {
+                // Top-level comment
+                setCt(text);
+                doComment();
+              }
+            }}
+            onDeleteComment={handleDeleteComment}
+            onUser={onUser}
+          />
+        </>
       )}
     </div>
   );
@@ -1547,7 +1561,10 @@ export default function Agora() {
   const doPost = async (content, media, url) => {
     const res = await api.post("/api/posts", { content, media: media ? { type:media.type, thumb:media.thumb, videoUrl:media.videoUrl||null } : null, url: url||null }, token);
     if (res.error) return;
-    setPosts(prev => [res, ...prev]);
+    // Generate discussion prompt based on post content
+    const discussionPrompt = generateDiscussionPrompt(content);
+    const postWithPrompt = { ...res, discussionPrompt };
+    setPosts(prev => [postWithPrompt, ...prev]);
     setScreen("feed");
   };
 
