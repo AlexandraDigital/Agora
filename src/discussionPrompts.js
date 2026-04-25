@@ -72,8 +72,13 @@ function detectTheme(text) {
   const lower = text.toLowerCase();
   const wordCount = text.split(/\s+/).length;
 
-  // Personal experiences - stronger signals required
-  if (/my (experience|journey|story|struggle|challenge)|(i learned|i realized|i discovered|i went through|i overcame|changed how i think)/i.test(text)) {
+  // Check IDEAS FIRST (before questions) - "what if" questions are ideas, not generic questions
+  if (/(what if|imagine this|here's an idea|i propose|what about|consider this approach|should we|could we|proposal|new approach)/i.test(text)) {
+    return "idea";
+  }
+
+  // Personal experiences - stronger signals required (need concrete narrative verbs)
+  if (/my (experience|journey|story|struggle|challenge)|(i went through|i overcame|this journey|my path|i grew|i transformed|learned (a lesson|so much) from)/i.test(text)) {
     return "personal";
   }
 
@@ -90,11 +95,6 @@ function detectTheme(text) {
   // Discoveries and research - stronger signals
   if (/(research (shows|indicates|demonstrates)|study (found|shows)|scientific evidence|data shows|turns out|fascinating fact|according to (research|studies)|experiment|findings|results)/i.test(text)) {
     return "discovery";
-  }
-
-  // Ideas and proposals - clearer indicators
-  if (/(what if|imagine this|here's an idea|i propose|what about|consider this approach|should we|could we|proposal|new approach)/i.test(text)) {
-    return "idea";
   }
 
   // Observations - stronger patterns
