@@ -80,7 +80,7 @@ function detectTheme(text) {
   }
 
   // Ideas and proposals
-  if /(what if|imagine|should|could|idea|proposal|suggest|think we should)/i.test(text)) {
+  if (/(what if|imagine|should|could|idea|proposal|suggest|think we should)/i.test(text)) {
     return "idea";
   }
 
