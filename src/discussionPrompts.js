@@ -67,40 +67,49 @@ const questionTemplates = {
  * Detect the theme of a post based on its content
  */
 function detectTheme(text) {
+  if (!text || text.trim().length === 0) return "general";
+  
   const lower = text.toLowerCase();
+  const wordCount = text.split(/\s+/).length;
 
-  // Personal experiences
-  if (/i (experienced|learned|realized|discovered|found|went through|struggled|overcame)/i.test(text)) {
+  // Personal experiences - stronger signals required
+  if (/my (experience|journey|story|struggle|challenge)|(i learned|i realized|i discovered|i went through|i overcame|changed how i think)/i.test(text)) {
     return "personal";
   }
 
-  // Discoveries and research
-  if (/found that|discovered|research (shows|indicates)|study|found evidence|turns out|interesting fact/i.test(text)) {
-    return "discovery";
-  }
-
-  // Ideas and proposals
-  if (/(what if|imagine|should|could|idea|proposal|suggest|think we should)/i.test(text)) {
-    return "idea";
-  }
-
-  // Questions
-  if (/^\s*[^.!?]*\?/m.test(text) && text.split("?").length > 2) {
+  // Single focused question (not a debate, just a question)
+  if (/^\s*[^.!?]*\?/.test(text.trim()) && text.split("?").length === 2 && wordCount < 50) {
     return "question";
   }
 
-  // Observations
-  if (/(notice|noticed|observe|seeing|appears|seems|looks like|i've been thinking about)/i.test(text)) {
+  // Multiple questions (discussion prompt)
+  if (text.split("?").length > 2) {
+    return "question";
+  }
+
+  // Discoveries and research - stronger signals
+  if (/(research (shows|indicates|demonstrates)|study (found|shows)|scientific evidence|data shows|turns out|fascinating fact|according to (research|studies)|experiment|findings|results)/i.test(text)) {
+    return "discovery";
+  }
+
+  // Ideas and proposals - clearer indicators
+  if (/(what if|imagine this|here's an idea|i propose|what about|consider this approach|should we|could we|proposal|new approach)/i.test(text)) {
+    return "idea";
+  }
+
+  // Observations - stronger patterns
+  if (/(i've noticed|i'm observing|i observe|i'm seeing a pattern|appears to|seems to be happening|i've been thinking about|strikes me|pattern|trend)/i.test(text)) {
     return "observation";
   }
 
-  // Debates or controversial topics
-  if (/(but|however|disagree|different view|other hand|counter|argument|vs|versus)/i.test(text)) {
+  // Debates - stronger conflict signals (need more than just "but")
+  if (/(i disagree|different view|opposing (view|side)|however, i think|on the other hand|counter to that|argument (against|for)|controversial|debate|versus)/i.test(text)) {
     return "debate";
   }
 
-  // Stories
-  if (/(happened|then|so|later|finally|ended up|it was|there was)/i.test(text)) {
+  // Stories - narrative signals (multiple story markers needed)
+  const storyMarkers = (text.match(/(then|after that|next|finally|ended up|it happened|there was|suddenly|last week|this morning)/gi) || []).length;
+  if (storyMarkers >= 2 && /(told|happened|experienced|lived|went through|shared|described)/i.test(text)) {
     return "story";
   }
 
