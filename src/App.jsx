@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { PWAInstallButton } from "./components/PWAInstallButton";
+import { MediaEditor } from "./MediaEditor";
+import { ThreadedComments } from "./ThreadedComments";
 
 const C = {
   bg: "#e6edf2",
@@ -553,33 +555,24 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
         </button>
       </div>
       {open && (
-        <div style={{ borderTop:`1px solid ${C.border}`, background:"#f9f7f3" }}>
-          {post.comments.map(c => {
-            const cm = users.find(u=>u.id===c.authorId);
-            if (!cm) return null;
-            const isCommentAuthor = c.authorId === cu.id;
-            return (
-              <div key={c.id} style={{ padding:"10px 16px", display:"flex", gap:10, borderBottom:`1px solid ${C.border}`, alignItems:"flex-start", justifyContent:"space-between" }}>
-                <div style={{ display:"flex", gap:10, flex:1, minWidth:0 }}>
-                  <Av user={cm} size={26}/>
-                  <div style={{ flex:1 }}>
-                    <span style={{ fontWeight:600, fontSize:13, fontFamily:T.body }}>{cm.displayName} </span>
-                    <span style={{ fontSize:13, fontFamily:T.body, color:C.text }}>{c.text}</span>
-                    <div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>{fmtTime(c.timestamp)}</div>
-                  </div>
-                </div>
-                {isCommentAuthor && (
-                  <button onClick={()=>handleDeleteComment(c.id)} disabled={deletingCommentId===c.id} style={{ background:"none", border:"none", cursor:deletingCommentId===c.id?"default":"pointer", color:C.textMuted, fontSize:12, padding:"0 4px", fontFamily:T.body, opacity:deletingCommentId===c.id?0.5:1 }}>{deletingCommentId===c.id?"…":"✕"}</button>
-                )}
-              </div>
-            );
-          })}
-          <div style={{ padding:"10px 16px", display:"flex", gap:8, alignItems:"center" }}>
-            <Av user={cu} size={26}/>
-            <input value={ct} onChange={e=>setCt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doComment()} placeholder="Add a comment…" style={{ flex:1, border:`1px solid ${C.border}`, borderRadius:20, padding:"6px 12px", fontSize:13, fontFamily:T.body, background:C.surface, outline:"none", color:C.text }}/>
-            <button onClick={doComment} disabled={!ct.trim()} style={{ background:ct.trim()?C.accent:C.border, color:ct.trim()?"#fff":C.textMuted, border:"none", borderRadius:20, padding:"6px 14px", fontSize:13, cursor:ct.trim()?"pointer":"default", fontFamily:T.body }}>Post</button>
-          </div>
-        </div>
+        <ThreadedComments
+          postId={post.id}
+          comments={post.comments || []}
+          users={users}
+          currentUser={cu}
+          onAddComment={(postId, text, parentCommentId) => {
+            if (parentCommentId) {
+              // Reply to a comment
+              doCommentReply(postId, text, parentCommentId);
+            } else {
+              // Top-level comment
+              setCt(text);
+              doComment();
+            }
+          }}
+          onDeleteComment={handleDeleteComment}
+          onUser={onUser}
+        />
       )}
     </div>
   );
@@ -1003,19 +996,53 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate }) {
 function EditPostModal({ post, cu, token, onSave, onCancel, onToast }) {
   const [text, setText] = useState(post.content);
   const [saving, setSaving] = useState(false);
+  const [editingMedia, setEditingMedia] = useState(false);
+  const [editedMediaThumb, setEditedMediaThumb] = useState(post.media?.thumb || null);
+  const [editedMediaUrl, setEditedMediaUrl] = useState(post.media?.videoUrl || null);
+  const fileRef = useRef(null);
   const MAX = 500;
-  const canSave = text.trim() && text.trim() !== post.content.trim();
+  const hasTextChanged = text.trim() !== post.content.trim();
+  const hasMediaChanged = editedMediaThumb !== (post.media?.thumb || null) || editedMediaUrl !== (post.media?.videoUrl || null);
+  const canSave = (hasTextChanged || hasMediaChanged) && text.trim();
 
   const doSave = async () => {
     if (!canSave) return;
     setSaving(true);
     try {
-      await onSave(post.id, text.trim());
+      const updatedMedia = hasMediaChanged ? { type: post.media?.type, thumb: editedMediaThumb, videoUrl: editedMediaUrl } : post.media;
+      await onSave(post.id, text.trim(), updatedMedia);
       onCancel();
     } catch (err) {
       onToast?.({ message: err.message || "Failed to save post.", type: "error" });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleMediaSave = (blob, dataUrl) => {
+    if (post.media?.type === "video") {
+      setEditedMediaUrl(dataUrl); // For now, store as data URL for videos
+    } else {
+      setEditedMediaThumb(dataUrl.split(",")[1]); // Store base64
+    }
+    setEditingMedia(false);
+  };
+
+  const handleReplaceMedia = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const isImg = f.type.startsWith("image/");
+    const isVid = f.type.startsWith("video/");
+    if (!isImg && !isVid) return;
+    
+    const blobUrl = URL.createObjectURL(f);
+    if (isImg) {
+      const thumb = await compressImage(f);
+      setEditedMediaThumb(thumb);
+    } else {
+      const thumb = await extractFrame(blobUrl);
+      setEditedMediaUrl(blobUrl);
+      setEditedMediaThumb(thumb);
     }
   };
 
@@ -1034,6 +1061,36 @@ function EditPostModal({ post, cu, token, onSave, onCancel, onToast }) {
             <div style={{ fontSize:11, color:text.length>MAX*0.9?"#b01e1e":C.textMuted, textAlign:"right", marginTop:3 }}>{text.length}/{MAX}</div>
           </div>
         </div>
+
+        {/* Media Editor */}
+        {post.media && !editingMedia && (
+          <div style={{ marginTop:16, marginBottom:16, borderRadius:10, overflow:"hidden", border:`1px solid ${C.border}` }}>
+            {post.media.type === "video" && post.media.videoUrl
+              ? <video src={editedMediaUrl || post.media.videoUrl} controls playsInline style={{ width:"100%", maxHeight:300, display:"block", background:"#000" }}/>
+              : <img src={`data:image/jpeg;base64,${editedMediaThumb || post.media.thumb}`} alt="" style={{ width:"100%", maxHeight:300, objectFit:"cover", display:"block" }}/>
+            }
+            <div style={{ padding:12, display:"flex", gap:10, borderTop:`1px solid ${C.border}`, background:C.accentLight }}>
+              <button onClick={() => setEditingMedia(true)} style={{ background:C.accent, color:"#fff", border:"none", borderRadius:20, padding:"8px 16px", fontSize:13, cursor:"pointer", fontFamily:T.body }}>
+                ✎ Edit media
+              </button>
+              <button onClick={()=>fileRef.current?.click()} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:20, padding:"8px 16px", fontSize:13, cursor:"pointer", fontFamily:T.body, color:C.text }}>
+                ⟳ Replace
+              </button>
+            </div>
+          </div>
+        )}
+
+        {editingMedia && post.media && (
+          <MediaEditor
+            mediaFile={editedMediaUrl || (post.media.type === "image" ? `data:image/jpeg;base64,${editedMediaThumb || post.media.thumb}` : editedMediaUrl || post.media.videoUrl)}
+            mediaType={post.media.type}
+            onSave={handleMediaSave}
+            onCancel={() => setEditingMedia(false)}
+          />
+        )}
+
+        <input ref={fileRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime" onChange={handleReplaceMedia} style={{ display:"none" }}/>
+
         <div style={{ display:"flex", justifyContent:"flex-end", gap:10, marginTop:16, paddingTop:16, borderTop:`1px solid ${C.border}` }}>
           <button onClick={onCancel} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:20, padding:"10px 28px", fontSize:14, cursor:"pointer", fontFamily:T.body, color:C.text }}>Cancel</button>
           <button onClick={doSave} disabled={!canSave||saving} style={{ background:(canSave&&!saving)?C.dark:C.border, color:(canSave&&!saving)?"#fff":C.textMuted, border:"none", borderRadius:20, padding:"10px 28px", fontSize:14, cursor:(canSave&&!saving)?"pointer":"default", fontFamily:T.body, fontWeight:600 }}>{saving?"Saving…":"Save"}</button>
@@ -1364,7 +1421,16 @@ export default function Agora() {
   };
 
   const comment = async (pid, text) => {
-    const res = await api.post(`/api/posts/${pid}/comment`, { text }, token);
+    const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId: null }, token);
+    if (res.error) return;
+    setPosts(prev => prev.map(p => {
+      if (p.id !== pid) return p;
+      return { ...p, comments: [...p.comments, res] };
+    }));
+  };
+
+  const doCommentReply = async (pid, text, parentCommentId) => {
+    const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId }, token);
     if (res.error) return;
     setPosts(prev => prev.map(p => {
       if (p.id !== pid) return p;
@@ -1413,15 +1479,15 @@ export default function Agora() {
     }
   };
 
-  const editPost = async (pid, content) => {
+  const editPost = async (pid, content, media) => {
     const originalPosts = posts;
     // Optimistic update
     setPosts(prev => prev.map(p => {
       if (p.id !== pid) return p;
-      return { ...p, content };
+      return { ...p, content, ...(media && { media }) };
     }));
     try {
-      const res = await api.put(`/api/posts/${pid}`, { content }, token);
+      const res = await api.put(`/api/posts/${pid}`, { content, media }, token);
       if (res.error) {
         // Revert on error
         setPosts(originalPosts);
