@@ -367,7 +367,7 @@ function Av({ user, size=36 }) {
   );
 }
 
-function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast }) {
+function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast, onEdit }) {
   const author = users.find(u=>u.id===post.authorId);
   const [open, setOpen] = useState(false);
   const [ct, setCt] = useState("");
@@ -377,6 +377,7 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reporting, setReporting] = useState(false);
+  const [editingPost, setEditingPost] = useState(false);
   if (!author) return null;
   const liked = post.likes.includes(cu.id);
   const isAuthor = post.authorId === cu.id;
@@ -442,6 +443,8 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
 
   return (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, marginBottom:12, overflow:"hidden" }}>
+      {/* Edit modal */}
+      {editingPost && <EditPostModal post={post} cu={cu} token={token} onSave={onEdit} onCancel={()=>setEditingPost(false)} onToast={onToast}/>}
       {/* Report modal */}
       {showReportModal && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200, padding:20 }}>
@@ -476,7 +479,10 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
           {showMenu && (
             <div style={{ position:"absolute", top:"100%", right:0, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, marginTop:4, zIndex:10, minWidth:160, boxShadow:"0 4px 16px rgba(0,0,0,0.12)", overflow:"hidden" }}>
               {isAuthor ? (
-                <button onClick={handleDeletePost} disabled={deleting} style={menuBtnStyle(true)} onMouseEnter={e=>e.currentTarget.style.background="#fff5f5"} onMouseLeave={e=>e.currentTarget.style.background="none"}>{deleting?"Deleting…":"🗑 Delete post"}</button>
+                <>
+                  <button onClick={()=>{setEditingPost(true);setShowMenu(false);}} style={menuBtnStyle(false)} onMouseEnter={e=>e.currentTarget.style.background=C.bg} onMouseLeave={e=>e.currentTarget.style.background="none"}>✏️ Edit post</button>
+                  <button onClick={handleDeletePost} disabled={deleting} style={menuBtnStyle(true)} onMouseEnter={e=>e.currentTarget.style.background="#fff5f5"} onMouseLeave={e=>e.currentTarget.style.background="none"}>{deleting?"Deleting…":"🗑 Delete post"}</button>
+                </>
               ) : (
                 <button onClick={()=>{setShowReportModal(true);setShowMenu(false);}} style={menuBtnStyle(false)} onMouseEnter={e=>e.currentTarget.style.background=C.bg} onMouseLeave={e=>e.currentTarget.style.background="none"}>🚩 Report post</button>
               )}
@@ -579,7 +585,7 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
   );
 }
 
-function FeedScreen({ posts, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast }) {
+function FeedScreen({ posts, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast, onEdit }) {
   const feed = posts.filter(p=>cu.following.includes(p.authorId)||p.authorId===cu.id).sort((a,b)=>b.timestamp-a.timestamp);
   return (
     <div>
@@ -593,7 +599,7 @@ function FeedScreen({ posts, users, cu, token, onLike, onComment, onDelete, onDe
           <div style={{ fontSize:16, fontWeight:600, marginBottom:8, fontFamily:T.body }}>Your feed is empty</div>
           <div style={{ fontSize:14, color:C.textMuted, fontFamily:T.body }}>Follow people from Explore to see their posts here.</div>
         </div>
-      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast}/>)}
+      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit}/>)}
     </div>
   );
 }
@@ -772,7 +778,7 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
 }
 
 
-function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onToast }) {
+function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onToast, onEdit }) {
   const user = users.find(u=>u.id===uid);
   if (!user) return null;
   const isOwn = uid===cu.id;
@@ -880,7 +886,7 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
       )}
 
       {userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
-      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast}/>)}
+      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit}/>)}
     </div>
   );
 }
@@ -989,6 +995,49 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate }) {
       </div>
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
         <button onClick={onLogout} style={{ background:"none", border:`1px solid ${C.accent}`, color:C.accent, borderRadius:8, padding:"10px 20px", fontSize:14, cursor:"pointer", fontFamily:T.body }}>Sign out</button>
+      </div>
+    </div>
+  );
+}
+
+function EditPostModal({ post, cu, token, onSave, onCancel, onToast }) {
+  const [text, setText] = useState(post.content);
+  const [saving, setSaving] = useState(false);
+  const MAX = 500;
+  const canSave = text.trim() && text.trim() !== post.content.trim();
+
+  const doSave = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      await onSave(post.id, text.trim());
+      onCancel();
+    } catch (err) {
+      onToast?.({ message: err.message || "Failed to save post.", type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(20,34,46,0.6)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:100 }}>
+      <div style={{ background:C.surface, width:"100%", maxWidth:600, borderRadius:"20px 20px 0 0", padding:24, maxHeight:"88vh", overflow:"auto" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <span style={{ fontWeight:600, fontSize:16, fontFamily:T.body, color:C.text }}>Edit post</span>
+          <button onClick={onCancel} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:C.textMuted, lineHeight:1 }}>×</button>
+        </div>
+        <div style={{ display:"flex", gap:12 }}>
+          <Av user={cu} size={38}/>
+          <div style={{ flex:1 }}>
+            <textarea value={text} onChange={e=>setText(e.target.value.slice(0,MAX))} placeholder="What's on your mind?" autoFocus style={{ width:"100%", border:"none", outline:"none", fontSize:16, fontFamily:T.body, resize:"none", minHeight:100, lineHeight:1.65, background:"transparent", boxSizing:"border-box", color:C.text }}/>
+            {parseTags(text).length>0 && <div style={{ fontSize:12, color:C.accent, marginTop:2, fontFamily:T.mono }}>{parseTags(text).join(" ")}</div>}
+            <div style={{ fontSize:11, color:text.length>MAX*0.9?"#b01e1e":C.textMuted, textAlign:"right", marginTop:3 }}>{text.length}/{MAX}</div>
+          </div>
+        </div>
+        <div style={{ display:"flex", justifyContent:"flex-end", gap:10, marginTop:16, paddingTop:16, borderTop:`1px solid ${C.border}` }}>
+          <button onClick={onCancel} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:20, padding:"10px 28px", fontSize:14, cursor:"pointer", fontFamily:T.body, color:C.text }}>Cancel</button>
+          <button onClick={doSave} disabled={!canSave||saving} style={{ background:(canSave&&!saving)?C.dark:C.border, color:(canSave&&!saving)?"#fff":C.textMuted, border:"none", borderRadius:20, padding:"10px 28px", fontSize:14, cursor:(canSave&&!saving)?"pointer":"default", fontFamily:T.body, fontWeight:600 }}>{saving?"Saving…":"Save"}</button>
+        </div>
       </div>
     </div>
   );
@@ -1364,6 +1413,28 @@ export default function Agora() {
     }
   };
 
+  const editPost = async (pid, content) => {
+    const originalPosts = posts;
+    // Optimistic update
+    setPosts(prev => prev.map(p => {
+      if (p.id !== pid) return p;
+      return { ...p, content };
+    }));
+    try {
+      const res = await api.put(`/api/posts/${pid}`, { content }, token);
+      if (res.error) {
+        // Revert on error
+        setPosts(originalPosts);
+        setToast({ message: "Failed to update post. Please try again.", type: "error" });
+        throw new Error(res.error);
+      }
+      setToast({ message: "Post updated.", type: "success" });
+    } catch (err) {
+      setPosts(originalPosts);
+      setToast({ message: "Failed to update post. Please try again.", type: "error" });
+    }
+  };
+
   const doPost = async (content, media, url) => {
     const res = await api.post("/api/posts", { content, media: media ? { type:media.type, thumb:media.thumb, videoUrl:media.videoUrl||null } : null, url: url||null }, token);
     if (res.error) return;
@@ -1441,10 +1512,10 @@ export default function Agora() {
       <div style={{ maxWidth:600, margin:"0 auto", padding:"20px 16px 100px" }}>
         {screen==="feed" && <>
           <PWAInstallButton />
-          <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast}/>
+          <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost}/>
         </>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost}/>}
         {screen==="admin" && cu.username===ADMIN_USER_ID && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
         {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile}/>}
       </div>
