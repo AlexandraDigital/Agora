@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { PWAInstallButton } from "./components/PWAInstallButton";
+import { ExploreScreen, CreateAlbumForm } from './ExploreScreen';
 import { ThreadedComments } from "./ThreadedComments";
 import { DiscussionPrompt } from "./DiscussionPrompt";
 import { generateDiscussionPrompt } from "./discussionPrompts";
@@ -1640,7 +1641,7 @@ export default function Agora() {
           <PWAInstallButton />
           <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost}/>
         </>}
-        {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow}/>}
+        {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} token={token} onUser={goUser} onFollow={follow} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast}/>}
         {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost}/>}
         {screen==="admin" && cu.username===ADMIN_USER_ID && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
         {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile}/>}
