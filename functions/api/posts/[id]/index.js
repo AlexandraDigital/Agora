@@ -98,27 +98,32 @@ export async function onRequest({ request, env, params }) {
         return errResponse("Post was flagged as spam.", 400);
       }
 
-      // Image moderation
+      // Media handling: if media field is provided, update it; otherwise keep existing
       let mediaType = post.mediaType;
       let mediaData = post.mediaData;
       let mediaVideoUrl = post.mediaVideoUrl;
 
-      if (media) {
-        if (media.type === "image" && media.thumb) {
-          const result = await moderateImageWithAI(media.thumb, env.ANTHROPIC_API_KEY);
-          if (!result.safe) {
-            return errResponse(result.reason, 400);
+      if (Object.prototype.hasOwnProperty.call(body, 'media')) {
+        // Media field was explicitly provided (could be null, undefined, or an object)
+        if (media) {
+          // New media provided
+          if (media.type === "image" && media.thumb) {
+            const result = await moderateImageWithAI(media.thumb, env.ANTHROPIC_API_KEY);
+            if (!result.safe) {
+              return errResponse(result.reason, 400);
+            }
           }
+          mediaType = media.type ?? null;
+          mediaData = media.thumb ?? null;
+          mediaVideoUrl = media.videoUrl ?? null;
+        } else {
+          // Media field provided but falsy (remove media)
+          mediaType = null;
+          mediaData = null;
+          mediaVideoUrl = null;
         }
-        mediaType = media.type ?? null;
-        mediaData = media.thumb ?? null;
-        mediaVideoUrl = media.videoUrl ?? null;
-      } else {
-        // Remove media if not provided
-        mediaType = null;
-        mediaData = null;
-        mediaVideoUrl = null;
       }
+      // else: media field not provided at all, keep existing media
 
       await db.prepare(
         'UPDATE posts SET content = ?, mediaType = ?, mediaData = ?, mediaVideoUrl = ?, url = ? WHERE id = ?'
