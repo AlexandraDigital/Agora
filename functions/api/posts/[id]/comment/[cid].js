@@ -1,4 +1,4 @@
-import { verifyAuth, jsonResponse, errResponse } from "../../../_helpers.js";
+import { verifyAuth, jsonResponse, errResponse, isAdmin } from "../../../_helpers.js";
 
 export async function onRequestDelete({ request, params, env }) {
   try {
@@ -20,9 +20,9 @@ export async function onRequestDelete({ request, params, env }) {
     const post = await db.prepare("SELECT authorId FROM posts WHERE id = ?").bind(postId).first();
     const isCommentAuthor = String(comment.authorId) === String(cu.id);
     const isPostAuthor    = post && String(post.authorId) === String(cu.id);
-    const isAdmin         = cu.username === "alex12g";
+    const userIsAdmin     = isAdmin(cu);
 
-    if (!isCommentAuthor && !isPostAuthor && !isAdmin) {
+    if (!isCommentAuthor && !isPostAuthor && !userIsAdmin) {
       return errResponse("Forbidden", 403);
     }
 
