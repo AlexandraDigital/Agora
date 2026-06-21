@@ -1,8 +1,7 @@
 import { verifyAuth, jsonResponse, errResponse, isAdmin } from "../../_helpers.js";
 
 // PUT /api/admin/flags/:id  { reviewed: true }
-// Dismisses a report without deleting the post — for false positives, so
-// admins aren't stuck choosing only between "ignore" and "delete".
+// Dismisses a report without deleting the post.
 export async function onRequestPut({ request, params, env }) {
   try {
     const db = env.DB;
