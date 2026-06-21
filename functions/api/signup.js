@@ -1,4 +1,4 @@
-import { hashPassword, shapeUser, jsonResponse, errResponse, AVATAR_COLORS } from "./_helpers.js";
+import { hashPassword, shapeUser, jsonResponse, errResponse, AVATAR_COLORS, createSession, checkRateLimit, clientIp } from "./_helpers.js";
 
 function generateUserId() {
   const ts = Date.now();
@@ -8,6 +8,11 @@ function generateUserId() {
 
 export async function onRequestPost({ request, env }) {
   const db = env.DB;
+  const ip = clientIp(request);
+
+  const limited = await checkRateLimit(env.KV, `signup:${ip}`, 6, 3600);
+  if (limited) return errResponse("Too many accounts created from this network. Please try again later.", 429);
+
   const { username, password, displayName, bio } = await request.json();
 
   if (!username || !password || !displayName)
@@ -16,6 +21,12 @@ export async function onRequestPost({ request, env }) {
     return errResponse("Username must be at least 3 characters", 400);
   if (!/^[a-z0-9_]+$/.test(username))
     return errResponse("Username can only contain letters, numbers, underscores", 400);
+  // Server-side password rules — the old version only checked this in the
+  // browser, so anyone calling the API directly could set a 1-character password.
+  if (password.length < 8)
+    return errResponse("Password must be at least 8 characters", 400);
+  if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password))
+    return errResponse("Password should include both letters and numbers", 400);
 
   const existing = await db.prepare("SELECT id FROM users WHERE username = ?").bind(username).first();
   if (existing) return errResponse("Username already taken", 409);
@@ -29,7 +40,7 @@ export async function onRequestPost({ request, env }) {
     "INSERT INTO users (id,username,displayName,bio,pw_hash,avatar,avatarColor,joinedAt) VALUES (?,?,?,?,?,?,?,?)"
   ).bind(id, username, displayName, bio || "", pw_hash, initials, avatarColor, Date.now()).run();
 
-  const token = `${id}:${password}`;
-  const user = await shapeUser({ id, username, displayName, bio: bio||"", avatar: initials, avatarColor, joinedAt: Date.now() }, db);
+  const token = await createSession(db, id);
+  const user = await shapeUser({ id, username, displayName, bio: bio||"", avatar: initials, avatarColor, joinedAt: Date.now(), isAdmin: 0 }, db);
   return jsonResponse({ token, user }, 201);
 }

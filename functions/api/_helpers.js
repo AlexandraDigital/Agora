@@ -5,10 +5,13 @@ export const AVATAR_COLORS = [
   "#8a4a6b","#5c7a4a","#7a5c4a","#4a5c8a",
 ];
 
+// How long a login session stays valid before the user must sign in again.
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+
 export function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Content-Type-Options": "nosniff" },
   });
 }
 
@@ -36,19 +39,101 @@ export async function verifyPassword(password, hash) {
   return bcrypt.compare(password, hash);
 }
 
+// ── Sessions ────────────────────────────────────────────────────────────
+// Replaces the old "userId:password" token. Tokens are random, opaque, and
+// stored server-side only as a SHA-256 hash, so a full database leak still
+// doesn't hand out usable tokens, and a token never contains a password.
+
+function bytesToHex(bytes) {
+  return [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function generateToken() {
+  return bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
+}
+
+export async function sha256Hex(input) {
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return bytesToHex(new Uint8Array(digest));
+}
+
+export async function createSession(db, userId) {
+  const token = generateToken();
+  const tokenHash = await sha256Hex(token);
+  const now = Date.now();
+  await db.prepare(
+    "INSERT INTO sessions (tokenHash, userId, createdAt, expiresAt) VALUES (?,?,?,?)"
+  ).bind(tokenHash, userId, now, now + SESSION_TTL_MS).run();
+  return token;
+}
+
+export async function destroySession(db, token) {
+  if (!token) return;
+  const tokenHash = await sha256Hex(token);
+  await db.prepare("DELETE FROM sessions WHERE tokenHash = ?").bind(tokenHash).run();
+}
+
 export async function verifyAuth(request, db) {
   const h = request.headers.get("Authorization") || "";
   if (!h.startsWith("Bearer ")) return null;
   const token = h.slice(7);
-  const colonIdx = token.indexOf(":");
-  if (colonIdx === -1) return null;
-  const userId = token.slice(0, colonIdx);
-  const password = token.slice(colonIdx + 1);
-  if (!userId || !password) return null;
-  const user = await db.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
-  if (!user) return null;
-  const match = await verifyPassword(password, user.pw_hash);
-  return match ? user : null;
+  if (!token) return null;
+
+  const tokenHash = await sha256Hex(token);
+  const session = await db.prepare("SELECT * FROM sessions WHERE tokenHash = ?").bind(tokenHash).first();
+  if (!session) return null;
+
+  if (session.expiresAt < Date.now()) {
+    await db.prepare("DELETE FROM sessions WHERE tokenHash = ?").bind(tokenHash).run();
+    return null;
+  }
+
+  const user = await db.prepare("SELECT * FROM users WHERE id = ?").bind(session.userId).first();
+  return user || null;
+}
+
+// ── Admin ───────────────────────────────────────────────────────────────
+// Backed by a real `isAdmin` column (migration 004) instead of a hardcoded
+// username string that was copy-pasted — inconsistently — across files.
+export function isAdmin(user) {
+  return !!user && (user.isAdmin === 1 || user.isAdmin === true);
+}
+
+// ── Lightweight rate limiting (best-effort, backed by KV) ─────────────────
+// Not a hard guarantee — KV is eventually consistent across edge locations —
+// but enough to blunt naive brute-force login attempts and mass signups.
+export async function checkRateLimit(kv, key, limit, windowSeconds) {
+  if (!kv) return false; // fail open if KV isn't bound, rather than breaking auth entirely
+  const rkey = `ratelimit:${key}`;
+  let count = 0;
+  try {
+    const existing = await kv.get(rkey);
+    count = existing ? (parseInt(existing, 10) || 0) : 0;
+  } catch (_) {}
+  if (count >= limit) return true;
+  try {
+    await kv.put(rkey, String(count + 1), { expirationTtl: windowSeconds });
+  } catch (_) {}
+  return false;
+}
+
+export function clientIp(request) {
+  return request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown";
+}
+
+// ── Moderation audit log ───────────────────────────────────────────────────
+// Records *why* something was auto-rejected, without storing the content
+// itself, so admins get useful signal without reading people's private drafts.
+export async function logModeration(db, { type, reason, authorId = null, postId = null }) {
+  try {
+    const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    await db.prepare(
+      "INSERT INTO moderation_log (id, type, reason, authorId, postId, timestamp) VALUES (?,?,?,?,?,?)"
+    ).bind(id, type, reason, authorId, postId, Date.now()).run();
+  } catch (_) {
+    // Never let logging failures block the actual moderation action.
+  }
 }
 
 export async function shapeUser(row, db) {
@@ -89,6 +174,7 @@ export async function shapeUser(row, db) {
     following:   following.results.map(r => r.followingId),
     blocked,
     muted,
+    isAdmin:     isAdmin(row),
   };
 }
 

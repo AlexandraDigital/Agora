@@ -1,5 +1,7 @@
-import { verifyAuth, shapePost, jsonResponse, errResponse } from "./_helpers.js";
+import { verifyAuth, shapePost, jsonResponse, errResponse, logModeration } from "./_helpers.js";
 import { detectProfanity, detectSpam } from "./moderation.js";
+
+const MAX_POST_LENGTH = 500; // the old version only enforced this in the browser
 
 function generateUUID() {
   return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
@@ -64,7 +66,6 @@ export async function onRequestGet({ request, env }) {
     if (!currentUser) return errResponse("Unauthorized", 401);
   }
 
-  const isAdmin = currentUser?.username === "alex12g";
   let rows;
 
   if (userId) {
@@ -108,14 +109,19 @@ export async function onRequestPost({ request, env }) {
     const media = body.media;
     const url = body.url;
     if (!content?.trim()) return errResponse("Content required", 400);
+    if (content.trim().length > MAX_POST_LENGTH) {
+      return errResponse(`Posts must be ${MAX_POST_LENGTH} characters or fewer.`, 400);
+    }
 
     // --- Text moderation ---
     const profanity = detectProfanity(content);
     if (profanity.detected && profanity.severity === "high") {
+      await logModeration(db, { type: "auto-reject", reason: "profanity", authorId: cu.id });
       return errResponse("Post contains inappropriate language and was not published.", 400);
     }
     const spam = detectSpam(content);
     if (spam.detected) {
+      await logModeration(db, { type: "auto-reject", reason: "spam", authorId: cu.id });
       return errResponse("Post was flagged as spam and was not published.", 400);
     }
 
@@ -123,6 +129,7 @@ export async function onRequestPost({ request, env }) {
     if (media?.type === "image" && media?.thumb) {
       const result = await moderateImageWithAI(media.thumb, env.ANTHROPIC_API_KEY);
       if (!result.safe) {
+        await logModeration(db, { type: "auto-reject", reason: "image-content", authorId: cu.id });
         return errResponse(result.reason, 400);
       }
     }
