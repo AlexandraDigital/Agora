@@ -1,5 +1,7 @@
-import { verifyAuth, jsonResponse, errResponse, shapePost } from '../../_helpers.js';
+import { verifyAuth, jsonResponse, errResponse, shapePost, isAdmin } from '../../_helpers.js';
 import { detectProfanity, detectSpam } from '../../moderation.js';
+
+const MAX_POST_LENGTH = 500;
 
 async function moderateImageWithAI(base64Data, apiKey) {
   if (!apiKey) return { safe: true };
@@ -75,9 +77,9 @@ export async function onRequest({ request, env, params }) {
       if (!post) return errResponse('Post not found', 404);
 
       const isAuthor = String(post.authorId) === String(cu.id);
-      const isAdmin = cu.username === 'alex12g';
-      
-      if (!isAuthor && !isAdmin) {
+      const userIsAdmin = isAdmin(cu);
+
+      if (!isAuthor && !userIsAdmin) {
         return errResponse('Forbidden', 403);
       }
 
@@ -86,6 +88,9 @@ export async function onRequest({ request, env, params }) {
 
       if (!content?.trim()) {
         return errResponse('Content cannot be empty', 400);
+      }
+      if (content.trim().length > MAX_POST_LENGTH) {
+        return errResponse(`Posts must be ${MAX_POST_LENGTH} characters or fewer.`, 400);
       }
 
       // Text moderation
@@ -156,17 +161,17 @@ export async function onRequest({ request, env, params }) {
       if (!post) return errResponse('Post not found', 404);
 
       const isAuthor = String(post.authorId) === String(cu.id);
-      const isAdmin  = cu.username === 'alex12g';
-      
-      if (!isAuthor && !isAdmin) {
+      const userIsAdmin = isAdmin(cu);
+
+      if (!isAuthor && !userIsAdmin) {
         return errResponse('Forbidden', 403);
       }
 
       await db.prepare(
         'DELETE FROM posts WHERE id=?'
       ).bind(postId).run();
-      
-      if (isAdmin && !isAuthor) {
+
+      if (userIsAdmin && !isAuthor) {
         await db.prepare(
           "UPDATE post_reports SET status = 'actioned' WHERE postId = ?"
         ).bind(postId).run();

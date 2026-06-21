@@ -1,5 +1,7 @@
 import { verifyAuth, jsonResponse, errResponse, isBlocked } from "../../_helpers.js";
 
+const MAX_COMMENT_LENGTH = 1000; // the old version had no server-side cap at all
+
 export async function onRequestPost({ request, params, env }) {
   const db = env.DB;
   const cu = await verifyAuth(request, db);
@@ -7,6 +9,9 @@ export async function onRequestPost({ request, params, env }) {
 
   const { text } = await request.json();
   if (!text?.trim()) return errResponse("Text required", 400);
+  if (text.trim().length > MAX_COMMENT_LENGTH) {
+    return errResponse(`Comments must be ${MAX_COMMENT_LENGTH} characters or fewer.`, 400);
+  }
 
   // Check block between commenter and post author
   const post = await db.prepare("SELECT authorId FROM posts WHERE id=?").bind(params.id).first();
