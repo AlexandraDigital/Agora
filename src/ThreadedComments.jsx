@@ -50,6 +50,28 @@ function fmtTime(ts) {
   return d.toLocaleDateString();
 }
 
+// A light, non-blocking nudge toward more thoughtful replies. This NEVER
+// prevents posting — it just shows a small hint for comments that look like
+// a driveby reaction (very short, or one of a handful of stock phrases),
+// complementing the DiscussionPrompt shown above the comment thread.
+const LOW_EFFORT_PATTERN = /^(lol+|lmao+|nice|ok(ay)?|cool|true|same|this|wow+|haha+|\+1|first|fr|facts)[.!?]*$/i;
+
+function isLowEffortComment(text) {
+  const t = text.trim();
+  if (!t) return false;
+  if (t.length < 6) return true;
+  if (t.length < 16 && LOW_EFFORT_PATTERN.test(t)) return true;
+  return false;
+}
+
+function ThoughtfulNudge() {
+  return (
+    <div style={{ fontSize: 11, color: C.textMuted, fontFamily: T.body, marginTop: 6 }}>
+      💭 Adding a reason or example often sparks a better conversation.
+    </div>
+  );
+}
+
 /**
  * ThreadedComments Component
  * 
@@ -380,6 +402,7 @@ export function ThreadedComments({
                   Cancel
                 </button>
               </div>
+              {isLowEffortComment(replyText) && <ThoughtfulNudge />}
             </div>
           </div>
         )}
@@ -451,53 +474,57 @@ function TopLevelCommentInput({ user, onSubmit }) {
   return (
     <div
       style={{
-        padding: "10px 16px",
-        display: "flex",
-        gap: 8,
-        alignItems: "center",
+        padding: "10px 16px 8px",
         borderTop: `1px solid ${C.border}`,
         background: C.surface
       }}
     >
-      <Av user={user} size={28} />
-      <input
-        value={text}
-        onChange={e => setText(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === "Enter" && e.ctrlKey) {
-            handlePost();
-          }
-        }}
-        placeholder="Add a comment…"
-        style={{
-          flex: 1,
-          border: `1px solid ${C.border}`,
-          borderRadius: 20,
-          padding: "6px 12px",
-          fontSize: 13,
-          fontFamily: T.body,
-          background: C.surface,
-          outline: "none",
-          color: C.text
-        }}
-      />
-      <button
-        onClick={handlePost}
-        disabled={!text.trim()}
-        style={{
-          background: text.trim() ? C.accent : C.border,
-          color: text.trim() ? "#fff" : C.textMuted,
-          border: "none",
-          borderRadius: 20,
-          padding: "6px 14px",
-          fontSize: 13,
-          cursor: text.trim() ? "pointer" : "default",
-          fontFamily: T.body,
-          fontWeight: 500
-        }}
-      >
-        Post
-      </button>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <Av user={user} size={28} />
+        <input
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Enter" && e.ctrlKey) {
+              handlePost();
+            }
+          }}
+          placeholder="Add a comment…"
+          style={{
+            flex: 1,
+            border: `1px solid ${C.border}`,
+            borderRadius: 20,
+            padding: "6px 12px",
+            fontSize: 13,
+            fontFamily: T.body,
+            background: C.surface,
+            outline: "none",
+            color: C.text
+          }}
+        />
+        <button
+          onClick={handlePost}
+          disabled={!text.trim()}
+          style={{
+            background: text.trim() ? C.accent : C.border,
+            color: text.trim() ? "#fff" : C.textMuted,
+            border: "none",
+            borderRadius: 20,
+            padding: "6px 14px",
+            fontSize: 13,
+            cursor: text.trim() ? "pointer" : "default",
+            fontFamily: T.body,
+            fontWeight: 500
+          }}
+        >
+          Post
+        </button>
+      </div>
+      {isLowEffortComment(text) && (
+        <div style={{ paddingLeft: 36 }}>
+          <ThoughtfulNudge />
+        </div>
+      )}
     </div>
   );
 }

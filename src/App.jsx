@@ -3,6 +3,7 @@ import { PWAInstallButton } from "./components/PWAInstallButton";
 import { ThreadedComments } from "./ThreadedComments";
 import { DiscussionPrompt } from "./DiscussionPrompt";
 import { generateDiscussionPrompt } from "./discussionPrompts";
+import { useMindfulUse, MindfulUseBanner, MindfulUseSummary } from "./components/MindfulUse";
 
 const C = {
   bg: "#e6edf2",
@@ -34,9 +35,6 @@ const authHeaders = (token) => ({
   "Content-Type": "application/json",
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
-
-// ── Admin configuration ───────────────────────────────────────────────────
-const ADMIN_USER_ID = "alex12g";
 
 const api = {
   post: (path, body, token) => fetch(`${API}${path}`, { method:"POST", headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
@@ -370,7 +368,7 @@ function Av({ user, size=36 }) {
   );
 }
 
-function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast, onEdit }) {
+function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast, onEdit, hideCounts }) {
   const author = users.find(u=>u.id===post.authorId);
   const [open, setOpen] = useState(false);
   const [ct, setCt] = useState("");
@@ -552,10 +550,10 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
       )}
       <div style={{ padding:"10px 16px 12px", display:"flex", gap:18, borderTop:`1px solid ${C.border}` }}>
         <button onClick={()=>onLike(post.id)} style={{ background:"none", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:5, color:liked?C.accent:C.textMuted, fontSize:13, fontFamily:T.body, padding:0 }}>
-          <span style={{ fontSize:17 }}>{liked?"♥":"♡"}</span><span>{post.likes.length}</span>
+          <span style={{ fontSize:17 }}>{liked?"♥":"♡"}</span>{!hideCounts && <span>{post.likes.length}</span>}
         </button>
         <button onClick={()=>setOpen(!open)} style={{ background:"none", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:5, color:open?C.text:C.textMuted, fontSize:13, fontFamily:T.body, padding:0 }}>
-          <span style={{ fontSize:15 }}>◯</span><span>{post.comments.length}</span>
+          <span style={{ fontSize:15 }}>◯</span>{!hideCounts && <span>{post.comments.length}</span>}
         </button>
       </div>
       {open && (
@@ -591,7 +589,7 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
   );
 }
 
-function FeedScreen({ posts, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast, onEdit }) {
+function FeedScreen({ posts, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast, onEdit, hideCounts }) {
   const feed = posts.filter(p=>cu.following.includes(p.authorId)||p.authorId===cu.id).sort((a,b)=>b.timestamp-a.timestamp);
   return (
     <div>
@@ -605,12 +603,12 @@ function FeedScreen({ posts, users, cu, token, onLike, onComment, onDelete, onDe
           <div style={{ fontSize:16, fontWeight:600, marginBottom:8, fontFamily:T.body }}>Your feed is empty</div>
           <div style={{ fontSize:14, color:C.textMuted, fontFamily:T.body }}>Follow people from Explore to see their posts here.</div>
         </div>
-      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit}/>)}
+      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit} hideCounts={hideCounts}/>)}
     </div>
   );
 }
 
-function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
+function ExploreScreen({ posts, users, cu, onUser, onFollow, hideCounts }) {
   const [tab, setTab] = useState("people");
   const [selTag, setSelTag] = useState(null);
   const tagMap = {};
@@ -655,7 +653,7 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow }) {
                 <span style={{ fontSize:20, fontWeight:700, fontFamily:T.brand, color:C.accent }}>{selTag}</span>
                 <button onClick={()=>setSelTag(null)} style={{ background:C.border, border:"none", borderRadius:20, padding:"3px 10px", fontSize:11, cursor:"pointer", color:C.textMuted, fontFamily:T.body }}>✕ clear</button>
               </div>
-              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={()=>{}} onComment={()=>{}} onDelete={()=>{}} onDeleteComment={()=>{}} onUser={onUser}/>)}
+              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={()=>{}} onComment={()=>{}} onDelete={()=>{}} onDeleteComment={()=>{}} onUser={onUser} hideCounts={hideCounts}/>)}
               <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:16, marginTop:8 }}>
                 <div style={{ fontSize:12, color:C.textMuted, marginBottom:12, fontFamily:T.body }}>All tags</div>
               </div>
@@ -681,14 +679,27 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
   const [reports, setReports] = useState([]);
   const [loadingReports, setLoadingReports] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [approvingId, setApprovingId] = useState(null);
+  const [stats, setStats] = useState(null);
 
   useEffect(() => {
     if (tab !== "reports") return;
     setLoadingReports(true);
-    fetch("/api/admin/moderation?status=pending", { headers:{ Authorization:`Bearer ${token}` }})
-      .then(r => r.json()).then(d => { setReports(Array.isArray(d) ? d : []); setLoadingReports(false); })
+    // NOTE: the previous version of this dashboard pointed at
+    // /api/admin/moderation, which had two bugs — it never matched the
+    // route that actually checks admin status correctly, and even when it
+    // did respond it returned { flags, users } while this code expected a
+    // bare array. The Reports tab was effectively always empty. Fixed below.
+    fetch("/api/admin/flags?status=pending", { headers:{ Authorization:`Bearer ${token}` }})
+      .then(r => r.json()).then(d => { setReports(Array.isArray(d?.flags) ? d.flags : []); setLoadingReports(false); })
       .catch(() => setLoadingReports(false));
   }, [tab, token]);
+
+  useEffect(() => {
+    fetch("/api/admin/stats", { headers:{ Authorization:`Bearer ${token}` }})
+      .then(r => r.json()).then(d => setStats(d))
+      .catch(() => {});
+  }, [token]);
 
   const adminDeletePost = async (pid) => {
     if (!confirm("Delete this post?")) return;
@@ -697,6 +708,17 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
     setReports(prev => prev.filter(r => r.postId !== pid));
     onDeletePost(pid);
     setDeletingId(null);
+  };
+
+  const approveReport = async (flagId, postId) => {
+    setApprovingId(flagId);
+    await fetch(`/api/admin/flags/${flagId}`, {
+      method:"PUT",
+      headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token}` },
+      body: JSON.stringify({ reviewed:true }),
+    });
+    setReports(prev => prev.filter(r => r.postId !== postId));
+    setApprovingId(null);
   };
 
   const totalUsers = users.length;
@@ -733,6 +755,34 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
               • Image file validation on upload
             </div>
           </div>
+
+          {stats && (
+            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20, marginTop:16 }}>
+              <div style={{ fontWeight:600, fontSize:14, marginBottom:12, fontFamily:T.body }}>📈 Last 14 days</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:12, marginBottom:14 }}>
+                <div style={{ background:C.bg, borderRadius:10, padding:"12px 14px" }}>
+                  <div style={{ fontSize:20, fontWeight:700, color:C.accent, fontFamily:T.body }}>{stats.totals.pendingReports}</div>
+                  <div style={{ fontSize:12, color:C.textMuted, marginTop:3, fontFamily:T.body }}>Pending reports</div>
+                </div>
+                <div style={{ background:C.bg, borderRadius:10, padding:"12px 14px" }}>
+                  <div style={{ fontSize:20, fontWeight:700, color:C.accent, fontFamily:T.body }}>{stats.signupsByDay.reduce((s,d)=>s+d.c,0)}</div>
+                  <div style={{ fontSize:12, color:C.textMuted, marginTop:3, fontFamily:T.body }}>New signups</div>
+                </div>
+                <div style={{ background:C.bg, borderRadius:10, padding:"12px 14px" }}>
+                  <div style={{ fontSize:20, fontWeight:700, color:C.accent, fontFamily:T.body }}>{stats.postsByDay.reduce((s,d)=>s+d.c,0)}</div>
+                  <div style={{ fontSize:12, color:C.textMuted, marginTop:3, fontFamily:T.body }}>New posts</div>
+                </div>
+              </div>
+              {stats.autoModByReason.length > 0 && (
+                <div>
+                  <div style={{ fontSize:12, color:C.textMuted, marginBottom:6, fontFamily:T.body }}>Auto-rejected on submission (reason, count — never the content itself):</div>
+                  {stats.autoModByReason.map(r => (
+                    <div key={r.reason} style={{ fontSize:13, fontFamily:T.body, color:C.text, marginBottom:4 }}>• {r.reason}: {r.c}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -744,7 +794,7 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
             return (
               <div key={u.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
                 <div>
-                  <div style={{ fontWeight:500, fontSize:14, fontFamily:T.body }}>{u.displayName} {u.username === "alex12g" && <span style={{ fontSize:11, background:C.accent, color:"#fff", borderRadius:8, padding:"1px 6px", marginLeft:4 }}>admin</span>}</div>
+                  <div style={{ fontWeight:500, fontSize:14, fontFamily:T.body }}>{u.displayName} {u.isAdmin && <span style={{ fontSize:11, background:C.accent, color:"#fff", borderRadius:8, padding:"1px 6px", marginLeft:4 }}>admin</span>}</div>
                   <div style={{ fontSize:12, color:C.textMuted, fontFamily:T.body }}>@{u.username} · {postCount} posts · {u.followers.length} followers</div>
                 </div>
               </div>
@@ -761,19 +811,24 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
           ) : reports.length === 0 ? (
             <div style={{ color:C.textMuted, fontSize:13, fontFamily:T.body }}>No pending reports 🎉</div>
           ) : reports.map(r => {
-            const post = posts.find(p => p.id === r.postId);
-            const author = post ? users.find(u => u.id === post.authorId) : null;
             return (
               <div key={r.id || r.postId} style={{ padding:"12px 0", borderBottom:`1px solid ${C.border}` }}>
                 <div style={{ fontSize:13, fontFamily:T.body, color:C.text, marginBottom:6 }}>
-                  <strong>{author?.displayName || "Unknown"}</strong>: {post?.content?.slice(0,120) || "(media post)"}
+                  <strong>{r.author?.displayName || "Unknown"}</strong>: {r.content?.slice(0,120) || "(media post)"}
                 </div>
                 <div style={{ fontSize:12, color:C.textMuted, fontFamily:T.body, marginBottom:8 }}>Reason: {r.reason} · {r.reportCount || 1} report(s)</div>
-                <button
-                  onClick={() => adminDeletePost(r.postId)}
-                  disabled={deletingId === r.postId}
-                  style={{ background:"#d63031", color:"#fff", border:"none", borderRadius:8, padding:"6px 16px", fontSize:12, cursor:"pointer", fontFamily:T.body }}
-                >{deletingId === r.postId ? "Deleting…" : "Delete post"}</button>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button
+                    onClick={() => approveReport(r.id, r.postId)}
+                    disabled={approvingId === r.id}
+                    style={{ background:C.success, color:"#fff", border:"none", borderRadius:8, padding:"6px 16px", fontSize:12, cursor:"pointer", fontFamily:T.body }}
+                  >{approvingId === r.id ? "…" : "✓ Approve (keep post)"}</button>
+                  <button
+                    onClick={() => adminDeletePost(r.postId)}
+                    disabled={deletingId === r.postId}
+                    style={{ background:"#d63031", color:"#fff", border:"none", borderRadius:8, padding:"6px 16px", fontSize:12, cursor:"pointer", fontFamily:T.body }}
+                  >{deletingId === r.postId ? "Deleting…" : "🗑 Delete post"}</button>
+                </div>
               </div>
             );
           })}
@@ -784,7 +839,7 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
 }
 
 
-function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onToast, onEdit }) {
+function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onToast, onEdit, hideCounts }) {
   const user = users.find(u=>u.id===uid);
   if (!user) return null;
   const isOwn = uid===cu.id;
@@ -892,12 +947,12 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
       )}
 
       {userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
-      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit}/>)}
+      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit} hideCounts={hideCounts}/>)}
     </div>
   );
 }
 
-function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate }) {
+function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCounts, onToggleHideCounts, todayMinutes, todaySessions }) {
   const [dn, setDn] = useState(cu.displayName);
   const [bio, setBio] = useState(cu.bio||"");
   const [saved, setSaved] = useState(false);
@@ -986,6 +1041,18 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate }) {
 
       {listCard("Blocked Users", "🚫", blockedUsers, unblock, "Unblock", "unblock")}
       {listCard("Muted Users",   "🔇", mutedUsers,   unmute,  "Unmute",  "unmute")}
+
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
+        <div style={{ fontWeight:600, fontSize:16, marginBottom:14, fontFamily:T.body }}>Mindful &amp; focus</div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:`1px solid ${C.border}`, marginBottom:14, gap:12 }}>
+          <div>
+            <div style={{ fontWeight:500, fontSize:14, fontFamily:T.body }}>Hide like &amp; comment counts</div>
+            <div style={{ fontSize:12, color:C.textMuted, fontFamily:T.body, marginTop:2 }}>Less comparison, more reading. Counts are hidden everywhere, including your own posts.</div>
+          </div>
+          <button onClick={onToggleHideCounts} style={{ background:hideCounts?C.success:"none", color:hideCounts?"#fff":C.textMuted, border:`1px solid ${hideCounts?C.success:C.border}`, borderRadius:20, padding:"6px 16px", fontSize:12, cursor:"pointer", fontFamily:T.body, flexShrink:0 }}>{hideCounts?"On":"Off"}</button>
+        </div>
+        <MindfulUseSummary todayMinutes={todayMinutes} todaySessions={todaySessions} />
+      </div>
 
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
         <div style={{ fontWeight:600, fontSize:16, marginBottom:14, fontFamily:T.body }}>Privacy & security</div>
@@ -1404,6 +1471,18 @@ export default function Agora() {
   const [composing, setComposing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
+  const [hideCounts, setHideCounts] = useState(() => {
+    try { return localStorage.getItem("ag_hideCounts") === "1"; } catch { return false; }
+  });
+  const mindful = useMindfulUse();
+
+  const toggleHideCounts = () => {
+    setHideCounts(prev => {
+      const next = !prev;
+      try { localStorage.setItem("ag_hideCounts", next ? "1" : "0"); } catch (_) {}
+      return next;
+    });
+  };
 
   // Restore session from localStorage (token + user only — posts/users come from API)
   useEffect(() => {
@@ -1448,7 +1527,13 @@ export default function Agora() {
     return true;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // Revoke the session server-side too — previously "logging out" only
+    // ever cleared localStorage on this device; the token itself stayed
+    // valid indefinitely if it had leaked anywhere.
+    try {
+      await fetch("/api/logout", { method:"POST", headers:{ Authorization:`Bearer ${token}` }});
+    } catch (_) {}
     setCu(null); setToken(null); setUsers([]); setPosts([]);
     localStorage.removeItem("ag_token");
     localStorage.removeItem("ag_cu");
@@ -1636,18 +1721,19 @@ export default function Agora() {
       </div>
 
       <div style={{ maxWidth:600, margin:"0 auto", padding:"20px 16px 100px" }}>
+        {mindful.showBreakNudge && <MindfulUseBanner sessionMinutes={mindful.sessionMinutes} onDismiss={mindful.dismissNudge} />}
         {screen==="feed" && <>
           <PWAInstallButton />
-          <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost}/>
+          <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>
         </>}
-        {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost}/>}
-        {screen==="admin" && cu.username===ADMIN_USER_ID && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
-        {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile}/>}
+        {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow} hideCounts={hideCounts}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>}
+        {screen==="admin" && cu.isAdmin && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
+        {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
       </div>
 
       <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.surface, borderTop:`1px solid ${C.border}`, display:"flex", padding:"8px 0 18px", zIndex:50 }}>
-        {navItems.filter(item=>!item.adminOnly||cu.username===ADMIN_USER_ID).map(item=>{
+        {navItems.filter(item=>!item.adminOnly||cu.isAdmin).map(item=>{
           const active=screen===item.id||(item.id==="myprofile"&&screen==="profile"&&profileUid===cu.id);
           return (
             <button key={item.id} onClick={()=>nav(item.id)} style={{ flex:1, background:"none", border:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:3, cursor:"pointer", color:active?C.accent:C.textMuted }}>
