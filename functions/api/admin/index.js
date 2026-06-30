@@ -127,7 +127,7 @@ export async function onRequestDelete({ request, params, env }) {
     return errResponse('Failed to delete post: ' + err.message, 500);
   }
 }
-}
+
 
 export async function onRequestDelete({ request, params, env }) {
   try {
