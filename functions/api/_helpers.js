@@ -198,7 +198,7 @@ return {
   muted: muted || [],
   isAdmin: isAdmin(row),
 };
-
+}
 export async function shapePost(row, db) {
   const likes = await db.prepare(
     "SELECT userId FROM likes WHERE postId = ?"
