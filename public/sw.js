@@ -1,19 +1,19 @@
 // Service Worker for Agora PWA
 // IMPORTANT: Change CACHE_VERSION on every deploy to bust stale caches.
 const CACHE_VERSION = "agora-v2";
-const ASSET_CACHE   = `${CACHE_VERSION}-assets`;
+const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 
-// Install: skip waiting so new SW activates immediately
+// Install: Force the service worker to activate immediately
 self.addEventListener("install", (event) => {
   console.log("Service Worker installing:", CACHE_VERSION);
-  self.skipWaiting();
+  event.waitUntil(self.skipWaiting()); // Added event.waitUntil
 });
 
-// Activate: delete ALL old caches so stale JS bundles are never served
+// Activate: delete ALL old caches safely
 self.addEventListener("activate", (event) => {
   console.log("Service Worker activating:", CACHE_VERSION);
   event.waitUntil(
-    caches.keys().then((cacheNames) =>
+    caches.keys().then((cacheNames) => 
       Promise.all(
         cacheNames
           .filter((name) => name !== ASSET_CACHE)
@@ -27,43 +27,53 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  // Only handle GET requests
   if (event.request.method !== "GET") return;
 
   const url = new URL(event.request.url);
 
-  // Always go to network for API calls
+  // 1. Cloudflare Pages /api/ routes MUST bypass service worker entirely
   if (url.pathname.startsWith("/api/")) return;
 
-  // HTML pages: network-first so the app shell is always fresh after a deploy.
-  // Falls back to cache only if offline.
-  if (event.request.headers.get("accept")?.includes("text/html") ||
-      url.pathname === "/" || url.pathname.endsWith(".html")) {
+  // 2. HTML & Navigation requests (Network-first, fallback to cache)
+  if (
+    event.request.mode === "navigate" || 
+    event.request.headers.get("accept")?.includes("text/html") || 
+    url.pathname.endsWith(".html")
+  ) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
           if (response.ok) {
             const clone = response.clone();
+            // Cache under the exact request object used
             caches.open(ASSET_CACHE).then((cache) => cache.put(event.request, clone));
           }
           return response;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => caches.match(event.request)) // Fallback to the specific cached page
     );
     return;
   }
 
-  // Static assets (JS, CSS, images): cache-first for performance.
-  // These have content-hashed filenames so stale files are not an issue.
+  // 3. Static assets (Cache-first, fallback to network)
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
-      return fetch(event.request).then((response) => {
-        if (response && response.status === 200 && response.type !== "error") {
-          const clone = response.clone();
-          caches.open(ASSET_CACHE).then((cache) => cache.put(event.request, clone));
-        }
-        return response;
-      }).catch(() => caches.match("/index.html"));
+      
+      return fetch(event.request)
+        .then((response) => {
+          // Cache successful responses
+          if (response && response.status === 200 && response.type === "basic") {
+            const clone = response.clone();
+            caches.open(ASSET_CACHE).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => {
+          // FIX: Instead of breaking, look for the root index cache if a generic fallback is needed
+          return caches.match("/");
+        });
     })
   );
 });
