@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 
 export const AVATAR_COLORS = [
-  "#7b6fa0","#4a7c59","#c87941","#4a7b8a",
-  "#8a4a6b","#5c7a4a","#7a5c4a","#4a5c8a",
+  "#7b6fa0", "#4a7c59", "#c87941", "#4a7b8a",
+  "#8a4a6b", "#5c7a4a", "#7a5c4a", "#4a5c8a",
 ];
 
 // How long a login session stays valid before the user must sign in again.
@@ -11,7 +11,10 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 export function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json", "X-Content-Type-Options": "nosniff" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Content-Type-Options": "nosniff"
+    },
   });
 }
 
@@ -20,21 +23,18 @@ export function errResponse(msg, status = 400) {
 }
 
 export async function isBlocked(db, viewerId, targetId) {
-  // Returns true if either user has blocked the other
-  const row = await db.prepare(
-    `SELECT 1 FROM user_moderation 
-     WHERE action='block' AND (
-       (userId=? AND targetUserId=?) OR
-       (userId=? AND targetUserId=?)
-     ) LIMIT 1`
-  ).bind(String(viewerId), String(targetId), String(targetId), String(viewerId)).first();
-  return !!row;
+  try {
+    const row = await db.prepare(
+      `SELECT 1 FROM user_moderation WHERE action='block' AND ( (userId=? AND targetUserId=?) OR (userId=? AND targetUserId=?) ) LIMIT 1`
+    ).bind(String(viewerId), String(targetId), String(targetId), String(viewerId)).first();
+    return !!row;
+  } catch (_) {
+    return false;
+  }
 }
 
 export async function hashPassword(password) {
   try {
-    // Specifying 10 rounds can sometimes exceed the CPU limit on free tiers.
-    // If it still crashes, lower the 10 to an 8.
     return await bcrypt.hash(password, 10);
   } catch (error) {
     console.error("Password hashing failed:", error);
@@ -45,8 +45,6 @@ export async function hashPassword(password) {
 export async function verifyPassword(password, hash) {
   try {
     if (!password || !hash) return false;
-    
-    // Using a promise-based compare helps prevent blocking the main thread
     return await new Promise((resolve) => {
       bcrypt.compare(password, hash, (err, res) => {
         if (err) resolve(false);
@@ -55,15 +53,11 @@ export async function verifyPassword(password, hash) {
     });
   } catch (error) {
     console.error("Password verification failed:", error);
-    return false; // Fail safe instead of crashing the server with a 500 error
+    return false;
   }
 }
 
 // ── Sessions ────────────────────────────────────────────────────────────
-// Replaces the old "userId:password" token. Tokens are random, opaque, and
-// stored server-side only as a SHA-256 hash, so a full database leak still
-// doesn't hand out usable tokens, and a token never contains a password.
-
 function bytesToHex(bytes) {
   return [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
 }
@@ -99,32 +93,25 @@ export async function verifyAuth(request, db) {
   if (!h.startsWith("Bearer ")) return null;
   const token = h.slice(7);
   if (!token) return null;
-
   const tokenHash = await sha256Hex(token);
   const session = await db.prepare("SELECT * FROM sessions WHERE tokenHash = ?").bind(tokenHash).first();
   if (!session) return null;
-
   if (session.expiresAt < Date.now()) {
     await db.prepare("DELETE FROM sessions WHERE tokenHash = ?").bind(tokenHash).run();
     return null;
   }
-
   const user = await db.prepare("SELECT * FROM users WHERE id = ?").bind(session.userId).first();
   return user || null;
 }
 
 // ── Admin ───────────────────────────────────────────────────────────────
-// Backed by a real `isAdmin` column (migration 004) instead of a hardcoded
-// username string that was copy-pasted — inconsistently — across files.
 export function isAdmin(user) {
   return !!user && (user.isAdmin === 1 || user.isAdmin === true);
 }
 
-// ── Lightweight rate limiting (best-effort, backed by KV) ─────────────────
-// Not a hard guarantee — KV is eventually consistent across edge locations —
-// but enough to blunt naive brute-force login attempts and mass signups.
+// ── Lightweight rate limiting ───────────────────────────────────────────
 export async function checkRateLimit(kv, key, limit, windowSeconds) {
-  if (!kv) return false; // fail open if KV isn't bound, rather than breaking auth entirely
+  if (!kv) return false;
   const rkey = `ratelimit:${key}`;
   let count = 0;
   try {
@@ -142,80 +129,82 @@ export function clientIp(request) {
   return request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown";
 }
 
-// ── Moderation audit log ───────────────────────────────────────────────────
-// Records *why* something was auto-rejected, without storing the content
-// itself, so admins get useful signal without reading people's private drafts.
+// ── Moderation audit log ─────────────────────────────────────────────────
 export async function logModeration(db, { type, reason, authorId = null, postId = null }) {
   try {
     const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
     await db.prepare(
       "INSERT INTO moderation_log (id, type, reason, authorId, postId, timestamp) VALUES (?,?,?,?,?,?)"
     ).bind(id, type, reason, authorId, postId, Date.now()).run();
-  } catch (_) {
-    // Never let logging failures block the actual moderation action.
-  }
+  } catch (_) {}
 }
 
 export async function shapeUser(row, db) {
   const followers = await db.prepare(
     "SELECT followerId FROM follows WHERE followingId = ?"
   ).bind(row.id).all();
+
   const following = await db.prepare(
     "SELECT followingId FROM follows WHERE followerId = ?"
   ).bind(row.id).all();
 
-  // blocked/muted are arrays of user IDs this user has blocked/muted
   let blocked = [];
   let muted = [];
+
   try {
     const blockedRes = await db.prepare(
       "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action = 'block'"
     ).bind(row.id).all();
-    blocked = blockedRes.results.map(r => r.targetUserId);
+    blocked = (blockedRes?.results || []).map(r => r.targetUserId);
   } catch (_) {}
+
   try {
     const mutedRes = await db.prepare(
       "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action = 'mute'"
     ).bind(row.id).all();
-    muted = mutedRes.results.map(r => r.targetUserId);
+    muted = (mutedRes?.results || []).map(r => r.targetUserId);
   } catch (_) {}
 
-  // Locate this at the bottom of your shapeUser(row, db) function:
-return {
-  id: row.id,
-  username: row.username,
-  displayName: row.displayName,
-  bio: row.bio,
-  avatar: row.avatar,
-  avatarColor: row.avatarColor,
-  avatarStyle: row.avatarStyle,
-  avatarImage: row.avatarImage,
-  joinedAt: row.joinedAt,
-  // FIX: Added || [] fallbacks to prevent .map() from crashing if the database returns empty results
-  followers: (followers?.results || []).map(r => r.followerId),
-  following: (following?.results || []).map(r => r.followingId),
-  blocked: blocked || [],
-  muted: muted || [],
-  isAdmin: isAdmin(row),
-};
+  return {
+    id: row.id,
+    username: row.username,
+    displayName: row.displayName,
+    bio: row.bio,
+    avatar: row.avatar,
+    avatarColor: row.avatarColor,
+    avatarStyle: row.avatarStyle,
+    avatarImage: row.avatarImage,
+    joinedAt: row.joinedAt,
+    followers: (followers?.results || []).map(r => r.followerId),
+    following: (following?.results || []).map(r => r.followingId),
+    blocked,
+    muted,
+    isAdmin: isAdmin(row),
+  };
 }
+
 export async function shapePost(row, db) {
   const likes = await db.prepare(
     "SELECT userId FROM likes WHERE postId = ?"
   ).bind(row.id).all();
+
   const comments = await db.prepare(
     "SELECT * FROM comments WHERE postId = ? ORDER BY timestamp ASC"
   ).bind(row.id).all();
+
   return {
-    id:        row.id,
-    authorId:  row.authorId,
-    content:   row.content,
+    id: row.id,
+    authorId: row.authorId,
+    content: row.content,
     timestamp: row.timestamp,
-    media:     row.mediaType ? { type: row.mediaType, thumb: row.mediaData, videoUrl: row.mediaVideoUrl || null } : null,
-    url:       row.url,
-    likes:     likes.results.map(r => r.userId),
-    comments:  comments.results.map(c => ({
-      id: c.id, authorId: c.authorId, text: c.text, timestamp: c.timestamp,
+    media: row.mediaType ? { type: row.mediaType, thumb: row.mediaData, videoUrl: row.mediaVideoUrl || null } : null,
+    url: row.url,
+    likes: (likes?.results || []).map(r => r.userId),
+    comments: (comments?.results || []).map(c => ({
+      id: c.id,
+      authorId: c.authorId,
+      text: c.text,
+      timestamp: c.timestamp,
     })),
   };
 }
