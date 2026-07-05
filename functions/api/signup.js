@@ -57,22 +57,23 @@ export async function onRequestPost({ request, env }) {
     const id = generateUserId();
     const initials = displayName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
     const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+    const avatarStyle = "circle"; // Defined to match your physical database column entry
     
     // 6. Securely Hash Password via bcryptjs
     const pw_hash = await hashPassword(password);
     const rightNow = Date.now();
 
-    // 7. SQL Execution mapping directly to updated 'pw_hash' column
+    // 7. SQL Execution — FIXED: Added avatarStyle column and its matching '?' variable binding slot
     await db.prepare(
-      "INSERT INTO users (id, username, displayName, bio, pw_hash, avatar, avatarColor, joinedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO users (id, username, displayName, bio, pw_hash, avatar, avatarColor, avatarStyle, joinedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
-    .bind(id, username, displayName, bio || "", pw_hash, initials, avatarColor, rightNow)
+    .bind(id, username, displayName, bio || "", pw_hash, initials, avatarColor, avatarStyle, rightNow)
     .run();
 
     // 8. Session Generation
     const token = await createSession(db, id);
     
-    // 9. Shape Response User Data payload 
+    // 9. Shape Response User Data payload — FIXED: Passed avatarStyle down to the wrapper helper
     const user = await shapeUser({ 
       id, 
       username, 
@@ -80,6 +81,7 @@ export async function onRequestPost({ request, env }) {
       bio: bio || "", 
       avatar: initials, 
       avatarColor, 
+      avatarStyle,
       joinedAt: rightNow, 
       isAdmin: 0 
     }, db);
