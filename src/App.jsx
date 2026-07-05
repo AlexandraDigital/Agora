@@ -699,12 +699,11 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
   useEffect(() => {
     if (tab !== "reports") return;
     setLoadingReports(true);
-    // NOTE: the previous version of this dashboard pointed at
-    // /api/admin/moderation, which had two bugs — it never matched the
-    // route that actually checks admin status correctly, and even when it
-    // did respond it returned { flags, users } while this code expected a
-    // bare array. The Reports tab was effectively always empty. Fixed below.
-    fetch("/api/admin/flags?status=pending", { headers:{ Authorization:`Bearer ${token}` }})
+    // The flags list is served by functions/api/admin/index.js. An index.js
+    // file's route is its folder path itself — /api/admin, not
+    // /api/admin/flags — and it responds with { flags, users }, hence the
+    // Array.isArray(d?.flags) guard below.
+    fetch("/api/admin?status=pending", { headers:{ Authorization:`Bearer ${token}` }})
       .then(r => r.json()).then(d => { setReports(Array.isArray(d?.flags) ? d.flags : []); setLoadingReports(false); })
       .catch(() => setLoadingReports(false));
   }, [tab, token]);
@@ -726,7 +725,7 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
 
   const approveReport = async (flagId, postId) => {
     setApprovingId(flagId);
-    await fetch(`/api/admin/flags/${flagId}`, {
+    await fetch(`/api/admin/flag/${flagId}`, {
       method:"PUT",
       headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token}` },
       body: JSON.stringify({ reviewed:true }),
