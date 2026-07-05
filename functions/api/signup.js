@@ -9,13 +9,6 @@ import {
   clientIp 
 } from "./_helpers.js";
 
-// Generates a safe, unique ID string for your users
-function generateUserId() {
-  const ts = Date.now();
-  const rand = Math.random().toString(36).slice(2, 7);
-  return `u_${ts}_${rand}`;
-}
-
 export async function onRequestPost({ request, env }) {
   try {
     const db = env.DB;
@@ -54,7 +47,6 @@ export async function onRequestPost({ request, env }) {
     }
 
     // 5. Generate User Metadata
-    const id = generateUserId();
     const initials = displayName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
     const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
     const avatarStyle = "circle"; // Defined to match your physical database column entry
@@ -63,12 +55,15 @@ export async function onRequestPost({ request, env }) {
     const pw_hash = await hashPassword(password);
     const rightNow = Date.now();
 
-    // 7. SQL Execution — FIXED: Added avatarStyle column and its matching '?' variable binding slot
-    await db.prepare(
-      "INSERT INTO users (id, username, displayName, bio, pw_hash, avatar, avatarColor, avatarStyle, joinedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    // 7. SQL Execution — id is NOT bound here. users.id is INTEGER PRIMARY KEY
+    // AUTOINCREMENT, so D1 assigns it; we read the assigned id back from meta below.
+    const result = await db.prepare(
+      "INSERT INTO users (username, displayName, bio, pw_hash, avatar, avatarColor, avatarStyle, joinedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
-    .bind(id, username, displayName, bio || "", pw_hash, initials, avatarColor, avatarStyle, rightNow)
+    .bind(username, displayName, bio || "", pw_hash, initials, avatarColor, avatarStyle, rightNow)
     .run();
+
+    const id = result.meta.last_row_id;
 
     // 8. Session Generation
     const token = await createSession(db, id);
