@@ -35,7 +35,7 @@ export async function isBlocked(db, viewerId, targetId) {
 
 export async function hashPassword(password) {
   try {
-    return await bcrypt.hash(password, 10);
+    return await bcryptjs.hash(password, 10);
   } catch (error) {
     console.error("Password hashing failed:", error);
     throw new Error("Secure hashing computation limits exceeded.");
@@ -46,7 +46,7 @@ export async function verifyPassword(password, hash) {
   try {
     if (!password || !hash) return false;
     return await new Promise((resolve) => {
-      bcrypt.compare(password, hash, (err, res) => {
+      bcryptjs.compare(password, hash, (err, res) => {
         if (err) resolve(false);
         resolve(res);
       });
