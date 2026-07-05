@@ -1411,8 +1411,8 @@ function AuthScreen({ onLogin, onSignup }) {
   const submit = async () => {
     setErr(""); setBusy(true);
     if (mode==="login") {
-      const ok = await onLogin(un, pw);
-      if (!ok) setErr("Username or password incorrect.");
+  const res = await onLogin(un, pw);
+  if (res !== true) setErr(res || "Username or password incorrect.");
     } else {
       if(!un||!pw||!dn){ setErr("Please fill in all required fields."); setBusy(false); return; }
       if(un.length<3){ setErr("Username must be at least 3 characters."); setBusy(false); return; }
@@ -1509,14 +1509,15 @@ export default function Agora() {
     load();
   }, [cu?.id]);
 
-  const login = async (un, pw) => {
-    const res = await api.post("/api/login", { username: un, password: pw });
-    if (res.error) return false;
-    setCu(res.user); setToken(res.token);
-    localStorage.setItem("ag_token", res.token);
-    localStorage.setItem("ag_cu", JSON.stringify(res.user));
-    return true;
-  };
+ // After
+const login = async (un, pw) => {
+  const res = await api.post("/api/login", { username: un, password: pw });
+  if (res.error) return res.error;   // forward the real message instead of swallowing it
+  setCu(res.user); setToken(res.token);
+  localStorage.setItem("ag_token", res.token);
+  localStorage.setItem("ag_cu", JSON.stringify(res.user));
+  return true;
+};
 
   const signup = async (un, pw, dn, bio) => {
     const res = await api.post("/api/signup", { username:un, password:pw, displayName:dn, bio });
