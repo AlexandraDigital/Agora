@@ -32,11 +32,31 @@ export async function isBlocked(db, viewerId, targetId) {
 }
 
 export async function hashPassword(password) {
-  return bcrypt.hash(password, 10);
+  try {
+    // Specifying 10 rounds can sometimes exceed the CPU limit on free tiers.
+    // If it still crashes, lower the 10 to an 8.
+    return await bcrypt.hash(password, 10);
+  } catch (error) {
+    console.error("Password hashing failed:", error);
+    throw new Error("Secure hashing computation limits exceeded.");
+  }
 }
 
 export async function verifyPassword(password, hash) {
-  return bcrypt.compare(password, hash);
+  try {
+    if (!password || !hash) return false;
+    
+    // Using a promise-based compare helps prevent blocking the main thread
+    return await new Promise((resolve) => {
+      bcrypt.compare(password, hash, (err, res) => {
+        if (err) resolve(false);
+        resolve(res);
+      });
+    });
+  } catch (error) {
+    console.error("Password verification failed:", error);
+    return false; // Fail safe instead of crashing the server with a 500 error
+  }
 }
 
 // ── Sessions ────────────────────────────────────────────────────────────
@@ -160,23 +180,24 @@ export async function shapeUser(row, db) {
     muted = mutedRes.results.map(r => r.targetUserId);
   } catch (_) {}
 
-  return {
-    id:          row.id,
-    username:    row.username,
-    displayName: row.displayName,
-    bio:         row.bio,
-    avatar:      row.avatar,
-    avatarColor: row.avatarColor,
-    avatarStyle: row.avatarStyle,
-    avatarImage: row.avatarImage,
-    joinedAt:    row.joinedAt,
-    followers:   followers.results.map(r => r.followerId),
-    following:   following.results.map(r => r.followingId),
-    blocked,
-    muted,
-    isAdmin:     isAdmin(row),
-  };
-}
+  // Locate this at the bottom of your shapeUser(row, db) function:
+return {
+  id: row.id,
+  username: row.username,
+  displayName: row.displayName,
+  bio: row.bio,
+  avatar: row.avatar,
+  avatarColor: row.avatarColor,
+  avatarStyle: row.avatarStyle,
+  avatarImage: row.avatarImage,
+  joinedAt: row.joinedAt,
+  // FIX: Added || [] fallbacks to prevent .map() from crashing if the database returns empty results
+  followers: (followers?.results || []).map(r => r.followerId),
+  following: (following?.results || []).map(r => r.followingId),
+  blocked: blocked || [],
+  muted: muted || [],
+  isAdmin: isAdmin(row),
+};
 
 export async function shapePost(row, db) {
   const likes = await db.prepare(
