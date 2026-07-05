@@ -1,4 +1,4 @@
-import { verifyAuth, jsonResponse, errResponse, isAdmin } from '../../_helpers.js';
+import { verifyAuth, jsonResponse, errResponse, isAdmin } from '../_helpers.js';
 
 // All admin checks now use the isAdmin() helper from _helpers.js, which reads
 // the `isAdmin` column set by migration 004. The old code compared cu.id
