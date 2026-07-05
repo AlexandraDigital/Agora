@@ -1,4 +1,4 @@
-import { verifyAuth, jsonResponse, errResponse, isAdmin } from "functions/api/_helpers.js";
+import { verifyAuth, jsonResponse, errResponse, isAdmin } from "../../_helpers.js";
 
 // PUT /api/admin/flags/:id  { reviewed: true }
 // Dismisses a report without deleting the post.
