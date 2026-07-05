@@ -127,31 +127,3 @@ export async function onRequestDelete({ request, params, env }) {
     return errResponse('Failed to delete post: ' + err.message, 500);
   }
 }
-
-
-export async function onRequestDelete({ request, params, env }) {
-  try {
-    const db = env.DB;
-    const cu = await verifyAuth(request, db);
-    if (!cu) return errResponse('Unauthorized', 401);
-
-    if (!ADMIN_USERS.includes(cu.id)) {
-      return errResponse('Admin access required', 403);
-    }
-
-    const postId = params.id;
-
-    // Delete the post
-    await db.prepare('DELETE FROM posts WHERE id = ?').bind(postId).run();
-
-    // Mark all reports for this post as actioned
-    await db.prepare(
-      "UPDATE post_reports SET status = 'actioned' WHERE postId = ?"
-    ).bind(postId).run();
-
-    return jsonResponse({ success: true });
-  } catch (err) {
-    console.error('Delete error:', err);
-    return errResponse('Failed to delete post: ' + err.message, 500);
-  }
-}
