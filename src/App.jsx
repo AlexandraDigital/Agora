@@ -952,7 +952,7 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
   );
 }
 
-function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCounts, onToggleHideCounts, todayMinutes, todaySessions }) {
+function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, onChangePassword, hideCounts, onToggleHideCounts, todayMinutes, todaySessions }) {
   const [dn, setDn] = useState(cu.displayName);
   const [bio, setBio] = useState(cu.bio||"");
   const [saved, setSaved] = useState(false);
@@ -960,6 +960,12 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCoun
   const [mutedUsers, setMutedUsers] = useState([]);
   const [loadingLists, setLoadingLists] = useState(true);
   const [actionBusy, setActionBusy] = useState(null);
+  const [curPw, setCurPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwErr, setPwErr] = useState("");
+  const [pwSaved, setPwSaved] = useState(false);
+  const [pwBusy, setPwBusy] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -979,6 +985,20 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCoun
   }, [token]);
 
   const save = () => { onUpdate({ displayName:dn, bio }); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+
+  const submitPasswordChange = async () => {
+    setPwErr("");
+    if (!curPw || !newPw || !confirmPw) { setPwErr("Fill in all three fields."); return; }
+    if (newPw.length < 8) { setPwErr("New password must be at least 8 characters."); return; }
+    if (!/[a-zA-Z]/.test(newPw) || !/[0-9]/.test(newPw)) { setPwErr("New password should include both letters and numbers."); return; }
+    if (newPw !== confirmPw) { setPwErr("New password and confirmation don't match."); return; }
+    setPwBusy(true);
+    const res = await onChangePassword(curPw, newPw);
+    setPwBusy(false);
+    if (res !== true) { setPwErr(res || "Couldn't change password."); return; }
+    setCurPw(""); setNewPw(""); setConfirmPw("");
+    setPwSaved(true); setTimeout(()=>setPwSaved(false), 2500);
+  };
 
   const unblock = async (uid) => {
     setActionBusy(`unblock-${uid}`);
@@ -1066,6 +1086,17 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCoun
           </div>
         ))}
       </div>
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
+        <div style={{ fontWeight:600, fontSize:16, marginBottom:16, fontFamily:T.body }}>Change password</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Current password</label><input type="password" value={curPw} onChange={e=>setCurPw(e.target.value)} style={inp}/></div>
+          <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>New password</label><input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="Min. 8 characters" style={inp}/></div>
+          <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Confirm new password</label><input type="password" value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} style={inp} onKeyDown={e=>e.key==="Enter"&&!pwBusy&&submitPasswordChange()}/></div>
+          {pwErr && <div style={{ color:C.accent, fontSize:13, fontFamily:T.body }}>{pwErr}</div>}
+          <button onClick={submitPasswordChange} disabled={pwBusy} style={{ background:pwSaved?C.success:(pwBusy?C.border:C.text), color:pwBusy?C.textMuted:"#fff", border:"none", borderRadius:8, padding:"10px 0", fontSize:14, cursor:pwBusy?"default":"pointer", fontFamily:T.body }}>{pwSaved?"✓ Password updated":pwBusy?"Updating…":"Update password"}</button>
+        </div>
+      </div>
+
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
         <button onClick={onLogout} style={{ background:"none", border:`1px solid ${C.accent}`, color:C.accent, borderRadius:8, padding:"10px 20px", fontSize:14, cursor:"pointer", fontFamily:T.body }}>Sign out</button>
       </div>
@@ -1411,8 +1442,8 @@ function AuthScreen({ onLogin, onSignup }) {
   const submit = async () => {
     setErr(""); setBusy(true);
     if (mode==="login") {
-  const res = await onLogin(un, pw);
-  if (res !== true) setErr(res || "Username or password incorrect.");
+      const ok = await onLogin(un, pw);
+      if (!ok) setErr("Username or password incorrect.");
     } else {
       if(!un||!pw||!dn){ setErr("Please fill in all required fields."); setBusy(false); return; }
       if(un.length<3){ setErr("Username must be at least 3 characters."); setBusy(false); return; }
@@ -1509,15 +1540,14 @@ export default function Agora() {
     load();
   }, [cu?.id]);
 
- // After
-const login = async (un, pw) => {
-  const res = await api.post("/api/login", { username: un, password: pw });
-  if (res.error) return res.error;   // forward the real message instead of swallowing it
-  setCu(res.user); setToken(res.token);
-  localStorage.setItem("ag_token", res.token);
-  localStorage.setItem("ag_cu", JSON.stringify(res.user));
-  return true;
-};
+  const login = async (un, pw) => {
+    const res = await api.post("/api/login", { username: un, password: pw });
+    if (res.error) return false;
+    setCu(res.user); setToken(res.token);
+    localStorage.setItem("ag_token", res.token);
+    localStorage.setItem("ag_cu", JSON.stringify(res.user));
+    return true;
+  };
 
   const signup = async (un, pw, dn, bio) => {
     const res = await api.post("/api/signup", { username:un, password:pw, displayName:dn, bio });
@@ -1538,6 +1568,12 @@ const login = async (un, pw) => {
     setCu(null); setToken(null); setUsers([]); setPosts([]);
     localStorage.removeItem("ag_token");
     localStorage.removeItem("ag_cu");
+  };
+
+  const changePassword = async (currentPassword, newPassword) => {
+    const res = await api.post("/api/change-password", { currentPassword, newPassword }, token);
+    if (res.error) return res.error;
+    return true;
   };
 
   const follow = async (uid) => {
@@ -1730,7 +1766,7 @@ const login = async (un, pw) => {
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow} hideCounts={hideCounts}/>}
         {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>}
         {screen==="admin" && cu.isAdmin && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
-        {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
+        {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} onChangePassword={changePassword} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
       </div>
 
       <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.surface, borderTop:`1px solid ${C.border}`, display:"flex", padding:"8px 0 18px", zIndex:50 }}>
