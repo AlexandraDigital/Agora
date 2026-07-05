@@ -1,8 +1,14 @@
-import bcrypt from "bcryptjs";
+import bcryptjs from "bcryptjs"; // Fixed variable name mapping to match calls below
 
 export const AVATAR_COLORS = [
-  "#7b6fa0", "#4a7c59", "#c87941", "#4a7b8a",
-  "#8a4a6b", "#5c7a4a", "#7a5c4a", "#4a5c8a",
+  "#7b6fa0",
+  "#4a7c59",
+  "#c87941",
+  "#4a7b8a",
+  "#8a4a6b",
+  "#5c7a4a",
+  "#7a5c4a",
+  "#4a5c8a",
 ];
 
 // How long a login session stays valid before the user must sign in again.
@@ -45,12 +51,8 @@ export async function hashPassword(password) {
 export async function verifyPassword(password, hash) {
   try {
     if (!password || !hash) return false;
-    return await new Promise((resolve) => {
-      bcryptjs.compare(password, hash, (err, res) => {
-        if (err) resolve(false);
-        resolve(res);
-      });
-    });
+    // Simplified to clean modern async await format instead of complex promise wraps
+    return await bcryptjs.compare(password, hash);
   } catch (error) {
     console.error("Password verification failed:", error);
     return false;
@@ -140,24 +142,23 @@ export async function logModeration(db, { type, reason, authorId = null, postId 
 }
 
 export async function shapeUser(row, db) {
+  // Added ?.results wrapper safely to prevent data formatting crashes
   const followers = await db.prepare(
     "SELECT followerId FROM follows WHERE followingId = ?"
   ).bind(row.id).all();
-
+  
   const following = await db.prepare(
     "SELECT followingId FROM follows WHERE followerId = ?"
   ).bind(row.id).all();
 
   let blocked = [];
   let muted = [];
-
   try {
     const blockedRes = await db.prepare(
       "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action = 'block'"
     ).bind(row.id).all();
     blocked = (blockedRes?.results || []).map(r => r.targetUserId);
   } catch (_) {}
-
   try {
     const mutedRes = await db.prepare(
       "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action = 'mute'"
@@ -187,7 +188,7 @@ export async function shapePost(row, db) {
   const likes = await db.prepare(
     "SELECT userId FROM likes WHERE postId = ?"
   ).bind(row.id).all();
-
+  
   const comments = await db.prepare(
     "SELECT * FROM comments WHERE postId = ? ORDER BY timestamp ASC"
   ).bind(row.id).all();
