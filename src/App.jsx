@@ -36,11 +36,25 @@ const authHeaders = (token) => ({
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
 
+const safeFetch = async (path, options) => {
+  let res;
+  try {
+    res = await fetch(`${API}${path}`, options);
+  } catch (e) {
+    return { error: "Network error — check your connection and try again." };
+  }
+  try {
+    return await res.json();
+  } catch (e) {
+    return { error: `Unexpected response from server (status ${res.status}). Please try again.` };
+  }
+};
+
 const api = {
-  post: (path, body, token) => fetch(`${API}${path}`, { method:"POST", headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
-  put:  (path, body, token) => fetch(`${API}${path}`, { method:"PUT",  headers:authHeaders(token), body:JSON.stringify(body) }).then(r=>r.json()),
-  get:  (path, token)       => fetch(`${API}${path}`, { headers:authHeaders(token) }).then(r=>r.json()),
-  delete: (path, token)     => fetch(`${API}${path}`, { method:"DELETE", headers:authHeaders(token) }).then(r=>r.json()),
+  post: (path, body, token) => safeFetch(path, { method:"POST", headers:authHeaders(token), body:JSON.stringify(body) }),
+  put:  (path, body, token) => safeFetch(path, { method:"PUT",  headers:authHeaders(token), body:JSON.stringify(body) }),
+  get:  (path, token)       => safeFetch(path, { headers:authHeaders(token) }),
+  delete: (path, token)     => safeFetch(path, { method:"DELETE", headers:authHeaders(token) }),
 };
 
 const fmtTime = (ts) => {
@@ -1441,18 +1455,23 @@ function AuthScreen({ onLogin, onSignup }) {
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     setErr(""); setBusy(true);
-    if (mode==="login") {
-      const ok = await onLogin(un, pw);
-      if (!ok) setErr("Username or password incorrect.");
-    } else {
-      if(!un||!pw||!dn){ setErr("Please fill in all required fields."); setBusy(false); return; }
-      if(un.length<3){ setErr("Username must be at least 3 characters."); setBusy(false); return; }
-      if(pw.length<8){ setErr("Password must be at least 8 characters."); setBusy(false); return; }
-      if(!/^[a-z0-9_]+$/.test(un)){ setErr("Username can only contain letters, numbers, underscores."); setBusy(false); return; }
-      const res = await onSignup(un, pw, dn, bio);
-      if (res !== true) setErr(res || "Username already taken.");
+    try {
+      if (mode==="login") {
+        const res = await onLogin(un, pw);
+        if (res !== true) setErr(res || "Username or password incorrect.");
+      } else {
+        if(!un||!pw||!dn){ setErr("Please fill in all required fields."); return; }
+        if(un.length<3){ setErr("Username must be at least 3 characters."); return; }
+        if(pw.length<8){ setErr("Password must be at least 8 characters."); return; }
+        if(!/^[a-z0-9_]+$/.test(un)){ setErr("Username can only contain letters, numbers, underscores."); return; }
+        const res = await onSignup(un, pw, dn, bio);
+        if (res !== true) setErr(res || "Username already taken.");
+      }
+    } catch (e) {
+      setErr("Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
   return (
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
@@ -1542,7 +1561,7 @@ export default function Agora() {
 
   const login = async (un, pw) => {
     const res = await api.post("/api/login", { username: un, password: pw });
-    if (res.error) return false;
+    if (res.error) return res.error;
     setCu(res.user); setToken(res.token);
     localStorage.setItem("ag_token", res.token);
     localStorage.setItem("ag_cu", JSON.stringify(res.user));
