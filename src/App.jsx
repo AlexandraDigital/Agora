@@ -965,7 +965,7 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
   );
 }
 
-function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, onChangePassword, hideCounts, onToggleHideCounts, todayMinutes, todaySessions }) {
+function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCounts, onToggleHideCounts, todayMinutes, todaySessions }) {
   const [dn, setDn] = useState(cu.displayName);
   const [bio, setBio] = useState(cu.bio||"");
   const [saved, setSaved] = useState(false);
@@ -973,12 +973,6 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, onChange
   const [mutedUsers, setMutedUsers] = useState([]);
   const [loadingLists, setLoadingLists] = useState(true);
   const [actionBusy, setActionBusy] = useState(null);
-  const [curPw, setCurPw] = useState("");
-  const [newPw, setNewPw] = useState("");
-  const [confirmPw, setConfirmPw] = useState("");
-  const [pwErr, setPwErr] = useState("");
-  const [pwSaved, setPwSaved] = useState(false);
-  const [pwBusy, setPwBusy] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -998,20 +992,6 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, onChange
   }, [token]);
 
   const save = () => { onUpdate({ displayName:dn, bio }); setSaved(true); setTimeout(()=>setSaved(false),2000); };
-
-  const submitPasswordChange = async () => {
-    setPwErr("");
-    if (!curPw || !newPw || !confirmPw) { setPwErr("Fill in all three fields."); return; }
-    if (newPw.length < 8) { setPwErr("New password must be at least 8 characters."); return; }
-    if (!/[a-zA-Z]/.test(newPw) || !/[0-9]/.test(newPw)) { setPwErr("New password should include both letters and numbers."); return; }
-    if (newPw !== confirmPw) { setPwErr("New password and confirmation don't match."); return; }
-    setPwBusy(true);
-    const res = await onChangePassword(curPw, newPw);
-    setPwBusy(false);
-    if (res !== true) { setPwErr(res || "Couldn't change password."); return; }
-    setCurPw(""); setNewPw(""); setConfirmPw("");
-    setPwSaved(true); setTimeout(()=>setPwSaved(false), 2500);
-  };
 
   const unblock = async (uid) => {
     setActionBusy(`unblock-${uid}`);
@@ -1099,17 +1079,6 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, onChange
           </div>
         ))}
       </div>
-      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
-        <div style={{ fontWeight:600, fontSize:16, marginBottom:16, fontFamily:T.body }}>Change password</div>
-        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-          <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Current password</label><input type="password" value={curPw} onChange={e=>setCurPw(e.target.value)} style={inp}/></div>
-          <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>New password</label><input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="Min. 8 characters" style={inp}/></div>
-          <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Confirm new password</label><input type="password" value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} style={inp} onKeyDown={e=>e.key==="Enter"&&!pwBusy&&submitPasswordChange()}/></div>
-          {pwErr && <div style={{ color:C.accent, fontSize:13, fontFamily:T.body }}>{pwErr}</div>}
-          <button onClick={submitPasswordChange} disabled={pwBusy} style={{ background:pwSaved?C.success:(pwBusy?C.border:C.text), color:pwBusy?C.textMuted:"#fff", border:"none", borderRadius:8, padding:"10px 0", fontSize:14, cursor:pwBusy?"default":"pointer", fontFamily:T.body }}>{pwSaved?"✓ Password updated":pwBusy?"Updating…":"Update password"}</button>
-        </div>
-      </div>
-
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
         <button onClick={onLogout} style={{ background:"none", border:`1px solid ${C.accent}`, color:C.accent, borderRadius:8, padding:"10px 20px", fontSize:14, cursor:"pointer", fontFamily:T.body }}>Sign out</button>
       </div>
@@ -1446,10 +1415,11 @@ function ComposeModal({ cu, token, onPost, onClose }) {
   );
 }
 
-function AuthScreen({ onLogin, onSignup }) {
+function AuthScreen({ onLogin, onSignup, onChangePassword }) {
   const [mode, setMode] = useState("signup");
   const [un, setUn] = useState(""); const [pw, setPw] = useState("");
   const [dn, setDn] = useState(""); const [bio, setBio] = useState("");
+  const [newPw, setNewPw] = useState(""); const [confirmPw, setConfirmPw] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = async () => {
@@ -1458,13 +1428,21 @@ function AuthScreen({ onLogin, onSignup }) {
       if (mode==="login") {
         const res = await onLogin(un, pw);
         if (res !== true) setErr(res || "Username or password incorrect.");
-      } else {
+      } else if (mode==="signup") {
         if(!un||!pw||!dn){ setErr("Please fill in all required fields."); return; }
         if(un.length<3){ setErr("Username must be at least 3 characters."); return; }
         if(pw.length<8){ setErr("Password must be at least 8 characters."); return; }
         if(!/^[a-z0-9_]+$/.test(un)){ setErr("Username can only contain letters, numbers, underscores."); return; }
         const res = await onSignup(un, pw, dn, bio);
         if (res !== true) setErr(res || "Username already taken.");
+      } else {
+        if(!un||!pw||!newPw||!confirmPw){ setErr("Please fill in all fields."); return; }
+        if(newPw.length<8){ setErr("New password must be at least 8 characters."); return; }
+        if(!/[a-zA-Z]/.test(newPw)||!/[0-9]/.test(newPw)){ setErr("New password should include both letters and numbers."); return; }
+        if(newPw!==confirmPw){ setErr("New password and confirmation don't match."); return; }
+        if(newPw===pw){ setErr("New password must be different from your current password."); return; }
+        const res = await onChangePassword(un, pw, newPw);
+        if (res !== true) setErr(res || "Couldn't change password.");
       }
     } catch (e) {
       setErr("Something went wrong. Please try again.");
@@ -1488,17 +1466,19 @@ function AuthScreen({ onLogin, onSignup }) {
         </div>
         <div style={{ background:C.surface, borderRadius:16, border:`1px solid ${C.border}`, padding:32 }}>
           <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:24 }}>
-            {[["login","Sign in"],["signup","Sign up"]].map(([id,label])=>(
-              <button key={id} onClick={()=>{setMode(id);setErr("");}} style={{ flex:1, background:"none", border:"none", padding:"0 0 12px", fontSize:14, fontWeight:mode===id?600:400, color:mode===id?C.text:C.textMuted, borderBottom:mode===id?`2px solid ${C.accent}`:"2px solid transparent", cursor:"pointer", fontFamily:T.body, marginBottom:-1 }}>{label}</button>
+            {[["login","Sign in"],["signup","Sign up"],["changepw","Change password"]].map(([id,label])=>(
+              <button key={id} onClick={()=>{setMode(id);setErr("");}} style={{ flex:1, background:"none", border:"none", padding:"0 0 12px", fontSize:12, fontWeight:mode===id?600:400, color:mode===id?C.text:C.textMuted, borderBottom:mode===id?`2px solid ${C.accent}`:"2px solid transparent", cursor:"pointer", fontFamily:T.body, marginBottom:-1, lineHeight:1.3 }}>{label}</button>
             ))}
           </div>
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
             {mode==="signup" && <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Display name *</label><input value={dn} onChange={e=>setDn(e.target.value)} placeholder="Your name" style={inp}/></div>}
             <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Username *</label><input value={un} onChange={e=>setUn(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,""))} placeholder="your_username" style={inp}/></div>
-            <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Password *</label><input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder={mode==="signup"?"Min. 8 characters":"••••••••"} style={inp} onKeyDown={e=>e.key==="Enter"&&!busy&&submit()}/></div>
+            <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>{mode==="changepw"?"Current password *":"Password *"}</label><input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder={mode==="signup"?"Min. 8 characters":"••••••••"} style={inp} onKeyDown={e=>e.key==="Enter"&&!busy&&submit()}/></div>
+            {mode==="changepw" && <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>New password *</label><input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="Min. 8 characters" style={inp}/></div>}
+            {mode==="changepw" && <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Confirm new password *</label><input type="password" value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} style={inp} onKeyDown={e=>e.key==="Enter"&&!busy&&submit()}/></div>}
             {mode==="signup" && <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Bio (optional)</label><input value={bio} onChange={e=>setBio(e.target.value)} placeholder="A few words about you" style={inp}/></div>}
             {err && <div style={{ color:C.accent, fontSize:13, fontFamily:T.body }}>{err}</div>}
-            <button onClick={submit} disabled={busy} style={{ background:busy?C.border:C.text, color:busy?C.textMuted:"#fff", border:"none", borderRadius:8, padding:"12px 0", fontSize:15, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:T.body, marginTop:4 }}>{busy?"Please wait…":mode==="login"?"Sign in":"Create account"}</button>
+            <button onClick={submit} disabled={busy} style={{ background:busy?C.border:C.text, color:busy?C.textMuted:"#fff", border:"none", borderRadius:8, padding:"12px 0", fontSize:15, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:T.body, marginTop:4 }}>{busy?"Please wait…":mode==="login"?"Sign in":mode==="signup"?"Create account":"Update password"}</button>
           </div>
 
         </div>
@@ -1588,9 +1568,17 @@ export default function Agora() {
     localStorage.removeItem("ag_cu");
   };
 
-  const changePassword = async (currentPassword, newPassword) => {
-    const res = await api.post("/api/change-password", { currentPassword, newPassword }, token);
+  // Change password now lives on the pre-login screen: verify identity via
+  // /api/login (reusing currentPassword) to get a fresh token, then change it.
+  // On success we're already holding a valid session, so log straight in.
+  const changePasswordFromAuth = async (username, currentPassword, newPassword) => {
+    const loginRes = await api.post("/api/login", { username, password: currentPassword });
+    if (loginRes.error) return loginRes.error;
+    const res = await api.post("/api/change-password", { currentPassword, newPassword }, loginRes.token);
     if (res.error) return res.error;
+    setCu(loginRes.user); setToken(loginRes.token);
+    localStorage.setItem("ag_token", loginRes.token);
+    localStorage.setItem("ag_cu", JSON.stringify(loginRes.user));
     return true;
   };
 
@@ -1762,7 +1750,7 @@ export default function Agora() {
     </div>
   );
 
-  if(!cu) return <AuthScreen onLogin={login} onSignup={signup}/>;
+  if(!cu) return <AuthScreen onLogin={login} onSignup={signup} onChangePassword={changePasswordFromAuth}/>;
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg }}>
@@ -1784,7 +1772,7 @@ export default function Agora() {
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow} hideCounts={hideCounts}/>}
         {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>}
         {screen==="admin" && cu.isAdmin && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
-        {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} onChangePassword={changePassword} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
+        {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
       </div>
 
       <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.surface, borderTop:`1px solid ${C.border}`, display:"flex", padding:"8px 0 18px", zIndex:50 }}>
