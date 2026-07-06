@@ -1091,7 +1091,7 @@ function EditPostModal({ post, cu, token, onSave, onCancel, onToast }) {
   const [saving, setSaving] = useState(false);
   const [newMedia, setNewMedia] = useState(null); // { type, thumb, videoUrl, file }
   const fileRef = useRef(null);
-  const MAX = 500;
+  const MAX = 1000;
   const hasTextChanged = text.trim() !== post.content.trim();
   const hasMediaChanged = !!newMedia;
   const canSave = (hasTextChanged && text.trim()) || hasMediaChanged;
@@ -1246,7 +1246,7 @@ function ComposeModal({ cu, token, onPost, onClose }) {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
   const videoRef = useRef(null);
-  const MAX = 500;
+  const MAX = 1000;
   const MAX_VIDEO = 25 * 1024 * 1024;
 
   const handleFile = async (e) => {
