@@ -144,12 +144,12 @@ export async function logModeration(db, { type, reason, authorId = null, postId 
 export async function shapeUser(row, db) {
   // Added ?.results wrapper safely to prevent data formatting crashes
   const followers = await db.prepare(
-    "SELECT followerId FROM follows WHERE followingId = ?"
-  ).bind(row.id).all();
-  
-  const following = await db.prepare(
-    "SELECT followingId FROM follows WHERE followerId = ?"
-  ).bind(row.id).all();
+  "SELECT followerId FROM follows WHERE followingId = ?"
+).bind(row.id).all();
+
+const following = await db.prepare(
+  "SELECT followingId FROM follows WHERE followerId = ?"
+).bind(row.id).all();
 
   let blocked = [];
   let muted = [];
