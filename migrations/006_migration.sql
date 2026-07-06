@@ -13,11 +13,11 @@ CREATE TABLE users_22new (
   isAdmin     INTEGER DEFAULT 0
 );
 
-INSERT INTO users_new (username, displayName, pw_hash, bio, avatar, avatarColor, avatarStyle, avatarImage, joinedAt)
+INSERT INTO users_22new (username, displayName, pw_hash, bio, avatar, avatarColor, avatarStyle, avatarImage, joinedAt)
 SELECT username, displayName, pw_hash, bio, avatar, avatarColor, avatarStyle, avatarImage, joinedAt FROM users;
 
 DROP TABLE users;
-ALTER TABLE users_new RENAME TO users;
+ALTER TABLE users_22new RENAME TO users;
 
 -- The table your crash is actually about (created + used by signup AND login)
 CREATE TABLE IF NOT EXISTS sessions (
