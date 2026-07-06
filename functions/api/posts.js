@@ -55,47 +55,54 @@ async function moderateImageWithAI(base64Data, apiKey) {
 }
 
 export async function onRequestGet({ request, env }) {
-  const db = env.DB;
-  const url = new URL(request.url);
-  const feed = url.searchParams.get("feed");
-  const userId = url.searchParams.get("userId");
+  // NOTE: wrapped in try/catch (matching onRequestPost below and every handler
+  // in posts/[id]/index.js) so a DB hiccup returns a clean JSON error instead
+  // of an unhandled exception that shows up client-side as a silently empty feed.
+  try {
+    const db = env.DB;
+    const url = new URL(request.url);
+    const feed = url.searchParams.get("feed");
+    const userId = url.searchParams.get("userId");
 
-  let currentUser = null;
-  if (feed) {
-    currentUser = await verifyAuth(request, db);
-    if (!currentUser) return errResponse("Unauthorized", 401);
-  }
-
-  let rows;
-
-  if (userId) {
-    rows = await db.prepare(
-      "SELECT * FROM posts WHERE authorId=? ORDER BY timestamp DESC LIMIT 100"
-    ).bind(userId).all();
-  } else if (feed) {
-    const currentUserId = currentUser.id;
-    rows = await db.prepare(`
-      SELECT p.* FROM posts p
-      WHERE (p.authorId = ? OR p.authorId IN (SELECT followingId FROM follows WHERE followerId = ?))
-      ORDER BY p.timestamp DESC LIMIT 100
-    `).bind(currentUserId, currentUserId).all();
-  } else {
-    // Exclude posts from users who have blocked or been blocked by the viewer
-    if (currentUser) {
-      rows = await db.prepare(`
-        SELECT * FROM posts WHERE authorId NOT IN (
-          SELECT targetUserId FROM user_moderation WHERE userId=? AND action='block'
-          UNION
-          SELECT userId FROM user_moderation WHERE targetUserId=? AND action='block'
-        ) ORDER BY timestamp DESC LIMIT 100
-      `).bind(currentUser.id, currentUser.id).all();
-    } else {
-      rows = await db.prepare("SELECT * FROM posts ORDER BY timestamp DESC LIMIT 100").all();
+    let currentUser = null;
+    if (feed) {
+      currentUser = await verifyAuth(request, db);
+      if (!currentUser) return errResponse("Unauthorized", 401);
     }
-  }
 
-  const posts = await Promise.all(rows.results.map(r => shapePost(r, db)));
-  return jsonResponse(posts);
+    let rows;
+
+    if (userId) {
+      rows = await db.prepare(
+        "SELECT * FROM posts WHERE authorId=? ORDER BY timestamp DESC LIMIT 100"
+      ).bind(userId).all();
+    } else if (feed) {
+      const currentUserId = currentUser.id;
+      rows = await db.prepare(`
+        SELECT p.* FROM posts p
+        WHERE (p.authorId = ? OR p.authorId IN (SELECT followingId FROM follows WHERE followerId = ?))
+        ORDER BY p.timestamp DESC LIMIT 100
+      `).bind(currentUserId, currentUserId).all();
+    } else {
+      // Exclude posts from users who have blocked or been blocked by the viewer
+      if (currentUser) {
+        rows = await db.prepare(`
+          SELECT * FROM posts WHERE authorId NOT IN (
+            SELECT targetUserId FROM user_moderation WHERE userId=? AND action='block'
+            UNION
+            SELECT userId FROM user_moderation WHERE targetUserId=? AND action='block'
+          ) ORDER BY timestamp DESC LIMIT 100
+        `).bind(currentUser.id, currentUser.id).all();
+      } else {
+        rows = await db.prepare("SELECT * FROM posts ORDER BY timestamp DESC LIMIT 100").all();
+      }
+    }
+
+    const posts = await Promise.all(rows.results.map(r => shapePost(r, db)));
+    return jsonResponse(posts);
+  } catch (err) {
+    return errResponse("Failed to load posts: " + err.message, 500);
+  }
 }
 
 export async function onRequestPost({ request, env }) {
