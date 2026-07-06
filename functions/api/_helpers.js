@@ -141,6 +141,39 @@ export async function logModeration(db, { type, reason, authorId = null, postId 
   } catch (_) {}
 }
 
+export async function shapePost(row, db) {
+  let likes = [];
+  try {
+    const likesRes = await db.prepare(
+      "SELECT userId FROM likes WHERE postId = ?"
+    ).bind(row.id).all();
+    likes = (likesRes?.results || []).map(r => r.userId);
+  } catch (_) {}
+
+  let comments = [];
+  try {
+    const commentsRes = await db.prepare(
+      "SELECT * FROM comments WHERE postId = ? ORDER BY timestamp ASC"
+    ).bind(row.id).all();
+    // Spread each row so any future comment columns (e.g. quoted-reply fields
+    // ThreadedComments.jsx already reads defensively) pass through untouched.
+    comments = (commentsRes?.results || []).map(c => ({ ...c }));
+  } catch (_) {}
+
+  return {
+    id: row.id,
+    authorId: row.authorId,
+    content: row.content,
+    timestamp: row.timestamp,
+    url: row.url,
+    media: row.mediaType
+      ? { type: row.mediaType, thumb: row.mediaData, videoUrl: row.mediaVideoUrl }
+      : null,
+    likes,
+    comments,
+  };
+}
+
 export async function shapeUser(row, db) {
   let followers = [];
   let following = [];
