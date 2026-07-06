@@ -3,7 +3,7 @@
  * Deploy these as separate route handlers in functions/api/moderation/
  */
 
-import { verifyAuth, jsonResponse, errResponse } from "../_helpers.js";
+import { verifyAuth, jsonResponse, errResponse } from "./_helpers.js";
 import {
   detectTextContent,
   detectImageContent,
