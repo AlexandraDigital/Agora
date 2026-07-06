@@ -1,6 +1,6 @@
 // Service Worker for Agora PWA
 // IMPORTANT: Change CACHE_VERSION on every deploy to bust stale caches.
-const CACHE_VERSION = "agora-v2";
+const CACHE_VERSION = "agora-v3";
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 
 // Install: Force the service worker to activate immediately
@@ -56,7 +56,24 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 3. Static assets (Cache-first, fallback to network)
+  // 3. manifest.json - not hashed, rarely changes, but should stay fresh.
+  // Network-first, fallback to cache (instead of cache-first like other static assets).
+  if (url.pathname === "/manifest.json") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(ASSET_CACHE).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // 4. Static assets (Cache-first, fallback to network)
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
@@ -71,10 +88,15 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() => {
-          // FIX: Instead of breaking, look for the root index cache if a generic fallback is needed
-          return caches.match("/");
+          // Fallback: only substitute the cached index page for actual document
+          // navigations/renders. For CSS/JS/other assets, try to match the exact
+          // request again (in case of a race) rather than silently returning HTML,
+          // which would otherwise look like a mystery styling bug later.
+          if (event.request.destination === "document") {
+            return caches.match("/");
+          }
+          return caches.match(event.request);
         });
     })
   );
 });
-
