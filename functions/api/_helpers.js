@@ -142,14 +142,20 @@ export async function logModeration(db, { type, reason, authorId = null, postId 
 }
 
 export async function shapeUser(row, db) {
-  // Added ?.results wrapper safely to prevent data formatting crashes
-  const followers = await db.prepare(
-  "SELECT followerId FROM follows WHERE followingId = ?"
-).bind(row.id).all();
-
-const following = await db.prepare(
-  "SELECT followingId FROM follows WHERE followerId = ?"
-).bind(row.id).all();
+  let followers = [];
+  let following = [];
+  try {
+    const followersRes = await db.prepare(
+      "SELECT followerId FROM follows WHERE followingId = ?"
+    ).bind(row.id).all();
+    followers = (followersRes?.results || []).map(r => r.followerId);
+  } catch (_) {}
+  try {
+    const followingRes = await db.prepare(
+      "SELECT followingId FROM follows WHERE followerId = ?"
+    ).bind(row.id).all();
+    following = (followingRes?.results || []).map(r => r.followingId);
+  } catch (_) {}
 
   let blocked = [];
   let muted = [];
@@ -176,36 +182,10 @@ const following = await db.prepare(
     avatarStyle: row.avatarStyle,
     avatarImage: row.avatarImage,
     joinedAt: row.joinedAt,
-    followers: (followers?.results || []).map(r => r.followerId),
-    following: (following?.results || []).map(r => r.followingId),
+    followers,
+    following,
     blocked,
     muted,
     isAdmin: isAdmin(row),
-  };
-}
-
-export async function shapePost(row, db) {
-  const likes = await db.prepare(
-    "SELECT userId FROM likes WHERE postId = ?"
-  ).bind(row.id).all();
-  
-  const comments = await db.prepare(
-    "SELECT * FROM comments WHERE postId = ? ORDER BY timestamp ASC"
-  ).bind(row.id).all();
-
-  return {
-    id: row.id,
-    authorId: row.authorId,
-    content: row.content,
-    timestamp: row.timestamp,
-    media: row.mediaType ? { type: row.mediaType, thumb: row.mediaData, videoUrl: row.mediaVideoUrl || null } : null,
-    url: row.url,
-    likes: (likes?.results || []).map(r => r.userId),
-    comments: (comments?.results || []).map(c => ({
-      id: c.id,
-      authorId: c.authorId,
-      text: c.text,
-      timestamp: c.timestamp,
-    })),
   };
 }
