@@ -1,7 +1,7 @@
 import { verifyAuth, jsonResponse, errResponse, shapePost, isAdmin } from '../../_helpers.js';
 import { detectProfanity, detectSpam } from '../../moderation.js';
 
-const MAX_POST_LENGTH = 500;
+const MAX_POST_LENGTH = 1000;
 
 async function moderateImageWithAI(base64Data, apiKey) {
   if (!apiKey) return { safe: true };
