@@ -1,5 +1,5 @@
 -- Rebuild users with a real autoincrement id + the isAdmin column
-CREATE TABLE users_new (
+CREATE TABLE users_22 (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   username    TEXT UNIQUE NOT NULL,
   displayName TEXT NOT NULL,
