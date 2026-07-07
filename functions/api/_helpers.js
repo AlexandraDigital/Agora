@@ -90,6 +90,13 @@ export async function destroySession(db, token) {
   await db.prepare("DELETE FROM sessions WHERE tokenHash = ?").bind(tokenHash).run();
 }
 
+// Used after a password reset via security question — that's a weaker proof
+// of identity than a real password, so any sessions issued before the reset
+// (on any device) get revoked and everyone has to sign in again.
+export async function destroyAllSessions(db, userId) {
+  await db.prepare("DELETE FROM sessions WHERE userId = ?").bind(userId).run();
+}
+
 export async function verifyAuth(request, db) {
   const h = request.headers.get("Authorization") || "";
   if (!h.startsWith("Bearer ")) return null;
@@ -215,6 +222,7 @@ export async function shapeUser(row, db) {
     avatarStyle: row.avatarStyle,
     avatarImage: row.avatarImage,
     joinedAt: row.joinedAt,
+    secQuestion: row.secQuestion || null, // never expose secAnswerHash here
     followers,
     following,
     blocked,
