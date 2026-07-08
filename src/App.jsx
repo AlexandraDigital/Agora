@@ -590,20 +590,14 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
               onPromptChange={setDiscussionPrompt}
             />
           </div>
-          <ThreadedComments 
+<ThreadedComments 
   postId={post.id} 
   comments={post.comments || []} 
   users={users} 
   currentUser={cu} 
   onAddComment={(postId, text, parentCommentId, quotedCommentId, quotedAuthorId) => {
-    // If it's a nested reply OR a quoted reply, we use our unified addComment handler
-    if (parentCommentId) {
-      addComment(postId, text, parentCommentId, quotedCommentId, quotedAuthorId);
-    } else {
-      // Top-level comment fallback matching your existing system
-      setCt(text); 
-      doComment(); 
-    }
+    // Both top-level and replies now pass safely to the same structural API function
+    addComment(postId, text, parentCommentId, quotedCommentId, quotedAuthorId);
   }} 
   onDeleteComment={deleteComment} // Connects your optimistic delete handler
   onUser={onUser} 
