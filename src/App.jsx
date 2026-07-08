@@ -863,7 +863,7 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
 }
 
 
-function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onToast, onEdit, hideCounts }) {
+function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onToast, onEdit, onMergePosts, hideCounts }) {
   const user = users.find(u=>u.id===uid);
   if (!user) return null;
   const isOwn = uid===cu.id;
@@ -878,6 +878,24 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
   const [isBlocked, setIsBlocked] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [modBusy, setModBusy] = useState(false);
+  const [postsLoaded, setPostsLoaded] = useState(false);
+
+  // The shared `posts` state only ever holds your own posts plus posts from
+  // people you follow, so a profile you don't follow looked "empty" even
+  // when it wasn't. This endpoint returns a specific user's posts with no
+  // follow requirement — fold the result into shared state so every screen
+  // (and the like/comment/delete/edit handlers that operate on it) stays
+  // in sync no matter whose profile you're viewing.
+  useEffect(() => {
+    let cancelled = false;
+    setPostsLoaded(false);
+    api.get(`/api/posts?userId=${uid}`, token).then(res => {
+      if (cancelled) return;
+      if (!res.error) onMergePosts?.(res);
+      setPostsLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, [uid, token]);
 
   useEffect(() => {
     if (isOwn) return;
@@ -970,7 +988,7 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
         </div>
       )}
 
-      {userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
+      {postsLoaded && userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
       {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit} hideCounts={hideCounts}/>)}
     </div>
   );
@@ -1865,6 +1883,18 @@ export default function Agora() {
     setScreen("feed");
   };
 
+  // Folds posts fetched for a specific profile into the shared `posts` state
+  // instead of keeping a separate copy, so like/comment/delete/edit — which
+  // all operate on this same array — keep working no matter whose profile
+  // the posts came from.
+  const mergePosts = (fetched) => {
+    setPosts(prev => {
+      const seen = new Set(prev.map(p => p.id));
+      const additions = fetched.filter(p => !seen.has(p.id));
+      return additions.length ? [...prev, ...additions] : prev;
+    });
+  };
+
   const updateProfile = async (updates) => {
     const res = await api.put(`/api/users/${cu.id}`, updates, token);
     if (res.error) return;
@@ -1939,7 +1969,7 @@ export default function Agora() {
           <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>
         </>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow} hideCounts={hideCounts}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} onMergePosts={mergePosts} hideCounts={hideCounts}/>}
         {screen==="admin" && cu.isAdmin && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
         {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} onChangePassword={changePassword} onSetSecurityQuestion={setSecurityQuestion} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
       </div>
