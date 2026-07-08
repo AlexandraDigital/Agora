@@ -422,10 +422,10 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
     }
   };
 
-  const handleDeleteComment = async (cid) => {
+  const handleDeleteComment = async (pid, cid) => {
     setDeletingCommentId(cid);
     try {
-      await onDeleteComment(post.id, cid);
+      await onDeleteComment(pid, cid);
     } catch (err) {
       onError?.(err);
     } finally {
@@ -593,11 +593,11 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
   comments={post.comments || []} 
   users={users} 
   currentUser={cu} 
-  onAddComment={(_id, text, parentCommentId, quotedCommentId, quotedAuthorId) => { 
-    // Resolves Git conflict: Safely routes everything through your unified addComment handler
-    addComment(post.id, text, parentCommentId, quotedCommentId, quotedAuthorId); 
+  onAddComment={(_id, text, parentCommentId, quotedCommentId) => { 
+    onComment(post.id, text, parentCommentId, quotedCommentId); 
   }} 
-  onDeleteComment={deleteComment} 
+  onDeleteComment={handleDeleteComment} 
+  deletingCommentId={deletingCommentId} 
   onUser={onUser} 
 /> 
 </> 
