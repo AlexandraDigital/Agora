@@ -1080,13 +1080,15 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, onChange
     return u ? `${u.displayName} (@${u.username})` : `User ${uid}`;
   };
 
-  const privacyItems = [
-    ["No data collection","We collect zero analytics or usage data"],
-    ["No tracking","No cookies, no fingerprinting, no ad profiles"],
-    ["No algorithm","Posts appear in strict chronological order"],
-    ["No AI sorting","No AI recommendations, no engagement ranking"],
-    ["Your data, your account","Data is stored securely on our servers and never sold"],
-  ];
+const privacyItems = [
+  ["No Usage Tracking", "We collect zero analytics or application usage data"],
+  ["No Ad Profiling", "Completely free of tracking cookies and digital fingerprinting"],
+  ["Chronological Feed", "All posts appear strictly in the order they are published"],
+  ["No Popularity Ranking", "Posts are never boosted based on likes or click counts"],
+  ["Data Never Sold", "Your information is secure and never shared for marketing"],
+];
+
+
 
   const listCard = (title, emoji, items, onAction, actionLabel, busyPrefix) => (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20, marginBottom:16 }}>
