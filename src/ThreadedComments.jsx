@@ -62,7 +62,7 @@ function ThoughtfulNudge() {
   );
 }
 
-export function ThreadedComments({ postId, comments = [], users = [], currentUser, onAddComment, onDeleteComment, onUser }) {
+export function ThreadedComments({ postId, comments = [], users = [], currentUser, onAddComment, onDeleteComment, onUser, deletingCommentId }) {
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyText, setReplyText] = useState("");
   const [expandedThreads, setExpandedThreads] = useState({});
@@ -160,8 +160,12 @@ export function ThreadedComments({ postId, comments = [], users = [], currentUse
                   💬 Quote
                 </button>
                 {isCurrentUserAuthor && (
-                  <button onClick={() => onDeleteComment(postId, comment.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#e74c3c", fontFamily: T.body, fontSize: 12, padding: 0 }}>
-                    Delete
+                  <button
+                    onClick={() => onDeleteComment(postId, comment.id)}
+                    disabled={deletingCommentId === comment.id}
+                    style={{ background: "none", border: "none", cursor: deletingCommentId === comment.id ? "default" : "pointer", color: "#e74c3c", fontFamily: T.body, fontSize: 12, padding: 0, opacity: deletingCommentId === comment.id ? 0.5 : 1 }}
+                  >
+                    {deletingCommentId === comment.id ? "Deleting…" : "Delete"}
                   </button>
                 )}
               </div>
