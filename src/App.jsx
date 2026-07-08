@@ -588,21 +588,23 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
               onPromptChange={setDiscussionPrompt}
             />
           </div>
-<ThreadedComments 
+          <ThreadedComments 
   postId={post.id} 
   comments={post.comments || []} 
   users={users} 
   currentUser={cu} 
-  onAddComment={onComment} 
-  onDeleteComment={deleteComment} // Connects your optimistic delete handler
+  onAddComment={(_id, text, parentCommentId, quotedCommentId, quotedAuthorId) => { 
+    // Resolves Git conflict: Safely routes everything through your unified addComment handler
+    addComment(post.id, text, parentCommentId, quotedCommentId, quotedAuthorId); 
+  }} 
+  onDeleteComment={deleteComment} 
   onUser={onUser} 
-/>
-
-        </>
-      )}
-    </div>
-  );
-}
+/> 
+</> 
+)} 
+</div> 
+); 
+};
 
 function FeedScreen({ posts, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast, onEdit, hideCounts }) {
   const feed = posts.filter(p=>cu.following.includes(p.authorId)||p.authorId===cu.id).sort((a,b)=>b.timestamp-a.timestamp);
