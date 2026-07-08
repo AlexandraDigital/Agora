@@ -396,7 +396,6 @@ function Av({ user, size=36 }) {
 function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast, onEdit, hideCounts }) {
   const author = users.find(u=>u.id===post.authorId);
   const [open, setOpen] = useState(false);
-  const [ct, setCt] = useState("");
   const [showMenu, setShowMenu] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState(null);
@@ -410,7 +409,6 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
   if (!author) return null;
   const liked = post.likes.includes(cu.id);
   const isAuthor = post.authorId === cu.id;
-  const doComment = () => { if(!ct.trim()) return; onComment(post.id,ct.trim()); setCt(""); };
   
   const handleDeletePost = async () => {
     setDeleting(true);
@@ -595,10 +593,7 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
   comments={post.comments || []} 
   users={users} 
   currentUser={cu} 
-  onAddComment={(postId, text, parentCommentId, quotedCommentId, quotedAuthorId) => {
-    // Both top-level and replies now pass safely to the same structural API function
-    addComment(postId, text, parentCommentId, quotedCommentId, quotedAuthorId);
-  }} 
+  onAddComment={onComment} 
   onDeleteComment={deleteComment} // Connects your optimistic delete handler
   onUser={onUser} 
 />
@@ -1789,18 +1784,12 @@ export default function Agora() {
     }));
   };
 
-  const comment = async (pid, text) => {
-    const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId: null }, token);
-    if (res.error) return;
-    setPosts(prev => prev.map(p => {
-      if (p.id !== pid) return p;
-      return { ...p, comments: [...p.comments, res] };
-    }));
-  };
-
-  const doCommentReply = async (pid, text, parentCommentId) => {
-    const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId }, token);
-    if (res.error) return;
+  const addComment = async (pid, text, parentCommentId = null, quotedCommentId = null) => {
+    const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId, quotedCommentId }, token);
+    if (res.error) {
+      setToast({ message: "Failed to post comment. Please try again.", type: "error" });
+      return;
+    }
     setPosts(prev => prev.map(p => {
       if (p.id !== pid) return p;
       return { ...p, comments: [...p.comments, res] };
@@ -1963,10 +1952,10 @@ export default function Agora() {
         {mindful.showBreakNudge && <MindfulUseBanner sessionMinutes={mindful.sessionMinutes} onDismiss={mindful.dismissNudge} />}
         {screen==="feed" && <>
           <PWAInstallButton />
-          <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>
+          <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={addComment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>
         </>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow} hideCounts={hideCounts}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} onMergePosts={mergePosts} hideCounts={hideCounts}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={addComment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} onMergePosts={mergePosts} hideCounts={hideCounts}/>}
         {screen==="admin" && cu.isAdmin && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
         {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} onChangePassword={changePassword} onSetSecurityQuestion={setSecurityQuestion} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
       </div>
