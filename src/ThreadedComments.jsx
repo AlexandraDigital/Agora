@@ -240,9 +240,29 @@ function TopLevelCommentInput({ user, onSubmit }) {
       setText("");
     }
   };
-  return (
-    <div style={{ padding: "10px 16px 8px", borderTop: `1px solid ${C.border}`, background: C.surface }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-
-
-export default ThreadedComments;
+ return (
+  <div style={{ padding: "10px 16px 8px", borderTop: `1px solid ${C.border}`, background: C.surface }}>
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <Av user={user} size={28} />
+      <input 
+        value={text} 
+        onChange={e => setText(e.target.value)} 
+        onKeyDown={e => { if (e.key === "Enter" && e.ctrlKey) handlePost(); }} 
+        placeholder="Add a comment…" 
+        style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: 20, padding: "6px 12px", fontSize: 13, fontFamily: T.body, background: C.surface, outline: "none", color: C.text }} 
+      />
+      <button 
+        onClick={handlePost} 
+        disabled={!text.trim()} 
+        style={{ background: text.trim() ? C.accent : C.border, color: text.trim() ? "#fff" : C.textMuted, border: "none", borderRadius: 20, padding: "6px 14px", fontSize: 13, cursor: text.trim() ? "pointer" : "default", fontFamily: T.body, fontWeight: 500 }}
+      >
+        Post
+      </button>
+    </div>
+    {isLowEffortComment(text) && (
+      <div style={{ paddingLeft: 36 }}>
+        <ThoughtfulNudge />
+      </div>
+    )}
+  </div>
+ )};
