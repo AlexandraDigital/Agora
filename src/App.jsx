@@ -1959,3 +1959,103 @@ const onFollow = async (uid) => {
   }
 };
 }
+const removeConnections = async (uids, type) => {
+  const ids = Array.isArray(uids) ? uids : [uids];
+
+  if (ids.length === 0) {
+    return { ok: true, failedCount: 0 };
+  }
+
+  const action = type === "followers"
+    ? "remove_follower"
+    : "unfollow";
+
+  try {
+
+    const results = await Promise.all(
+      ids.map(uid =>
+        api.post(`/api/follow/${uid}`, { action }, token)
+      )
+    );
+
+
+    const failedIds = ids.filter(
+      (_, i) => results[i]?.error
+    );
+
+    const succeededIds = ids.filter(
+      (_, i) => !results[i]?.error
+    );
+
+
+    setCu(prev => ({
+      ...prev,
+
+      followers: type === "followers"
+        ? (prev.followers || [])
+            .filter(id => !succeededIds.includes(id))
+        : prev.followers,
+
+      following: type === "following"
+        ? (prev.following || [])
+            .filter(id => !succeededIds.includes(id))
+        : prev.following,
+    }));
+
+
+    const freshUsers = await api.get(
+      "/api/users",
+      token
+    );
+
+
+    if (!freshUsers.error) {
+
+      setUsers(freshUsers);
+
+      const freshSelf = freshUsers.find(
+        u => u.id === cu.id
+      );
+
+      if (freshSelf) {
+        setCu(prev => ({
+          ...prev,
+          following: freshSelf.following || [],
+          followers: freshSelf.followers || []
+        }));
+      }
+    }
+
+
+    if (failedIds.length) {
+      setToast({
+        message:`${failedIds.length} removals failed.`,
+        type:"error"
+      });
+    }
+
+
+    return {
+      ok: failedIds.length === 0,
+      failedCount: failedIds.length
+    };
+
+
+  } catch(err) {
+
+    console.log(
+      "Remove connections error:",
+      err
+    );
+
+    setToast({
+      message:"Failed to update connections.",
+      type:"error"
+    });
+
+    return {
+      ok:false,
+      failedCount:ids.length
+    };
+  }
+};
