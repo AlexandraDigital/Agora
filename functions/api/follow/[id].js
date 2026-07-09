@@ -20,8 +20,8 @@ export async function onRequestPost({ request, params, env }) {
     return errResponse("Missing target user ID", 400);
   }
 
-  if (action !== "follow" && action !== "unfollow") {
-    return errResponse("Invalid action. Must be 'follow' or 'unfollow'", 400);
+  if (action !== "follow" && action !== "unfollow" && action !== "remove_follower") {
+    return errResponse("Invalid action. Must be 'follow', 'unfollow', or 'remove_follower'", 400);
   }
 
   if (String(targetId) === String(cu.id)) {
@@ -48,6 +48,14 @@ export async function onRequestPost({ request, params, env }) {
       await db.prepare(
         "DELETE FROM follows WHERE followerId = ? AND followingId = ?"
       ).bind(currentUserId, numericTargetId).run();
+    } else if (action === "remove_follower") {
+      // Same table, opposite direction: the target follows *us*, and we're
+      // forcibly ending that relationship (they never asked for this — no
+      // notification, no confirmation needed on their end, it's a soft
+      // removal identical in effect to them unfollowing us themselves).
+      await db.prepare(
+        "DELETE FROM follows WHERE followerId = ? AND followingId = ?"
+      ).bind(numericTargetId, currentUserId).run();
     } else {
       await db.prepare(`
         INSERT INTO follows (followerId, followingId) 
