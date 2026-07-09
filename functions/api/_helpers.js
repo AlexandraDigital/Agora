@@ -325,6 +325,19 @@ export async function shapePost(row, db) {
     mediaData: row.mediaData || null,
     mediaVideoUrl: row.mediaVideoUrl || null,
     url: row.url || null,
+     mediaType: row.mediaType || null,
+mediaData: row.mediaData || null,
+mediaVideoUrl: row.mediaVideoUrl || null,
+
+media: row.mediaType
+  ? {
+      type: row.mediaType,
+      thumb: row.mediaData,
+      videoUrl: row.mediaVideoUrl,
+    }
+  : null,
+
+url: row.url || null,
 
     timestamp: Number(row.timestamp),
 
