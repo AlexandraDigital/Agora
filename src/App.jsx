@@ -1015,13 +1015,117 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCoun
   };
 
   const privacyItems = [
-    ["No data collection","We collect zero analytics or usage data"],
-    ["No tracking","No cookies, no fingerprinting, no ad profiles"],
-    ["No algorithm","Posts appear in strict chronological order"],
-    ["No AI sorting","No AI recommendations, no engagement ranking"],
-    ["Your data, your account","Data is stored securely on our servers and never sold"],
+    ["No Usage Tracking. We collect zero analytics or application usage data"],
+    ["No Ad Profiling. Completely free of tracking cookies and digital fing"],
+    ["Chronological Feed. All posts appear strictly in the order they are published"],
+    ["No Popularity Ranking. Posts are never boosted based on likes or click counts"],
+    ["Data Never Sold. Your information is secure and never shared for marketing"],
   ];
+<div className="security-card">
 
+  <h2>Change password</h2>
+
+  <input
+    type="password"
+    placeholder="Current password"
+    value={passwordForm.currentPassword}
+    onChange={e =>
+      setPasswordForm({
+        ...passwordForm,
+        currentPassword: e.target.value
+      })
+    }
+  />
+
+  <input
+    type="password"
+    placeholder="New password (Min. 8 characters)"
+    value={passwordForm.newPassword}
+    onChange={e =>
+      setPasswordForm({
+        ...passwordForm,
+        newPassword: e.target.value
+      })
+    }
+  />
+
+  <input
+    type="password"
+    placeholder="Confirm new password"
+    value={passwordForm.confirmPassword}
+    onChange={e =>
+      setPasswordForm({
+        ...passwordForm,
+        confirmPassword: e.target.value
+      })
+    }
+  />
+
+  <button onClick={changePassword}>
+    Update password
+  </button>
+
+
+  <hr />
+
+
+  <h2>Security question</h2>
+
+  <p>
+    Used to reset your password if you forget it.
+    Setting a new one below replaces it.
+  </p>
+
+  <input
+    type="password"
+    placeholder="Current password"
+    value={securityForm.currentPassword}
+    onChange={e =>
+      setSecurityForm({
+        ...securityForm,
+        currentPassword: e.target.value
+      })
+    }
+  />
+
+
+  <select
+    value={securityForm.question}
+    onChange={e =>
+      setSecurityForm({
+        ...securityForm,
+        question: e.target.value
+      })
+    }
+  >
+    <option value="">
+      Security question
+    </option>
+
+    {securityQuestions.map(q => (
+      <option key={q}>
+        {q}
+      </option>
+    ))}
+  </select>
+
+
+  <input
+    placeholder="Answer"
+    value={securityForm.answer}
+    onChange={e =>
+      setSecurityForm({
+        ...securityForm,
+        answer: e.target.value
+      })
+    }
+  />
+
+  <button onClick={saveSecurityQuestion}>
+    Save security question
+  </button>
+
+</div>
   const listCard = (title, emoji, items, onAction, actionLabel, busyPrefix) => (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20, marginBottom:16 }}>
       <div style={{ fontWeight:600, fontSize:15, marginBottom:12, fontFamily:T.body }}>{emoji} {title}</div>
@@ -1573,16 +1677,54 @@ export default function Agora() {
   // Change password now lives on the pre-login screen: verify identity via
   // /api/login (reusing currentPassword) to get a fresh token, then change it.
   // On success we're already holding a valid session, so log straight in.
-  const changePasswordFromAuth = async (username, currentPassword, newPassword) => {
-    const loginRes = await api.post("/api/login", { username, password: currentPassword });
-    if (loginRes.error) return loginRes.error;
-    const res = await api.post("/api/change-password", { currentPassword, newPassword }, loginRes.token);
-    if (res.error) return res.error;
-    setCu(loginRes.user); setToken(loginRes.token);
-    localStorage.setItem("ag_token", loginRes.token);
-    localStorage.setItem("ag_cu", JSON.stringify(loginRes.user));
-    return true;
-  };
+  const changePassword = async () => {
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    alert("Passwords do not match");
+    return;
+  }
+
+  const res = await fetch("/api/change-password", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("token")}`
+    },
+    body: JSON.stringify(passwordForm)
+  });
+
+  const data = await res.json();
+
+  if (data.ok) {
+    alert("Password updated");
+    setPasswordForm({
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: ""
+    });
+  } else {
+    alert(data.error || "Failed to update password");
+  }
+};
+
+
+const saveSecurityQuestion = async () => {
+  const res = await fetch("/api/security-question", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("token")}`
+    },
+    body: JSON.stringify(securityForm)
+  });
+
+  const data = await res.json();
+
+  if (data.ok) {
+    alert("Security question saved");
+  } else {
+    alert(data.error || "Failed saving security question");
+  }
+};
 
   const follow = async (uid) => {
     if (sameId(uid, cu.id)) return;
