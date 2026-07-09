@@ -858,8 +858,7 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
   );
 }
 
-
-function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onToast, onEdit, onMergePosts, hideCounts }) {
+function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onToast, onEdit, onMergePosts, hideCounts, onOpenConnections }) {
   const user = users.find(u=>u.id===uid);
   if (!user) return null;
   const isOwn = uid===cu.id;
