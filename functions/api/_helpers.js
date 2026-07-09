@@ -399,8 +399,9 @@ export async function shapeUser(row, db) {
     blocked,
     muted,
 
+  
     isAdmin: Number(row.isAdmin) === 1,
-  }
   };
+}
 
 
