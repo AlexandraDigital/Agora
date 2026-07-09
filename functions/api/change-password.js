@@ -1,4 +1,4 @@
-import { verifyAuth, verifyPassword, hashPassword, jsonResponse, errResponse, checkRateLimit, clientIp } from "./_helpers.js";
+import { verifyAuth, verifyPassword, hashPassword, jsonResponse, errResponse, checkRateLimit, clientIp, destroyAllSessions } from "./_helpers.js";
 
 export async function onRequestPost({ request, env }) {
   const db = env.DB;
@@ -23,7 +23,12 @@ export async function onRequestPost({ request, env }) {
     return errResponse("New password must be different from your current password", 400);
 
   const pw_hash = await hashPassword(newPassword);
-  await db.prepare("UPDATE users SET pw_hash = ? WHERE id = ?").bind(pw_hash, cu.id).run();
 
-  return jsonResponse({ ok: true });
+await db.prepare(
+  "UPDATE users SET pw_hash = ? WHERE id = ?"
+).bind(pw_hash, cu.id).run();
+
+await destroyAllSessions(db, cu.id);
+
+return jsonResponse({ ok: true });
 }
