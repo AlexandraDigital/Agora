@@ -400,6 +400,7 @@ export async function shapeUser(row, db) {
     muted,
 
     isAdmin: Number(row.isAdmin) === 1,
+  }
   };
-}
+
 
