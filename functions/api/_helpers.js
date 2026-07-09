@@ -211,22 +211,27 @@ export async function shapeUser(row, db) {
     ).bind(row.id).all();
     muted = (mutedRes?.results || []).map(r => r.targetUserId);
   } catch (_) {}
-console.log(user);
+
+
   return {
-    id: row.id,
-    username: row.username,
-    displayName: row.displayName,
-    bio: row.bio,
-    avatar: row.avatar,
-    avatarColor: row.avatarColor,
-    avatarStyle: row.avatarStyle,
-    avatarImage: row.avatarImage,
-    joinedAt: row.joinedAt,
-    secQuestion: row.secQuestion || null, // never expose secAnswerHash here
-    followers,
-    following,
-    blocked,
-    muted,
-    isAdmin: isAdmin(row),
+  id: row.id,
+  username: row.username,
+  displayName: row.displayName || row.username,
+  bio: row.bio || "",
+  avatar: row.avatar || null,
+  avatarColor: row.avatarColor || "#7b6fa0",
+  avatarStyle: row.avatarStyle || "default",
+  avatarImage: row.avatarImage || null,
+  joinedAt: row.joinedAt || null,
+
+  secQuestion: row.secQuestion || null,
+
+  followers: followers || [],
+  following: following || [],
+  blocked: blocked || [],
+  muted: muted || [],
+ function isAdmin(row) {
+  return Number(row.isAdmin) === 1;
+}
   };
 }
