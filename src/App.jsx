@@ -1863,7 +1863,9 @@ export default function Agora() {
 
 const onFollow = async (uid) => {
   try {
-    const alreadyFollowing = (cu.following || []).includes(uid);
+    const alreadyFollowing = (cu.following || [])
+  .map(String)
+  .includes(String(uid));
     const action = alreadyFollowing ? "unfollow" : "follow";
 
     const oldCu = cu;
@@ -1948,7 +1950,7 @@ const onFollow = async (uid) => {
     }
 
 
-  } catch(err) {
+   } catch(err) {
 
     console.log("Follow error:", err);
 
@@ -1958,7 +1960,7 @@ const onFollow = async (uid) => {
     });
   }
 };
-}
+
 const removeConnections = async (uids, type) => {
   const ids = Array.isArray(uids) ? uids : [uids];
 
@@ -2058,4 +2060,5 @@ const removeConnections = async (uids, type) => {
       failedCount:ids.length
     };
   }
-};
+}
+}
