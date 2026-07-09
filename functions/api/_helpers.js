@@ -1,4 +1,4 @@
-import bcryptjs from "bcryptjs"; // Fixed variable name mapping to match calls below
+import bcryptjs from "bcryptjs";
 
 export const AVATAR_COLORS = [
   "#7b6fa0",
@@ -11,15 +11,14 @@ export const AVATAR_COLORS = [
   "#4a5c8a",
 ];
 
-// How long a login session stays valid before the user must sign in again.
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
 export function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json",
-      "X-Content-Type-Options": "nosniff"
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }
@@ -31,8 +30,22 @@ export function errResponse(msg, status = 400) {
 export async function isBlocked(db, viewerId, targetId) {
   try {
     const row = await db.prepare(
-      `SELECT 1 FROM user_moderation WHERE action='block' AND ( (userId=? AND targetUserId=?) OR (userId=? AND targetUserId=?) ) LIMIT 1`
-    ).bind(String(viewerId), String(targetId), String(targetId), String(viewerId)).first();
+      `SELECT 1 FROM user_moderation 
+       WHERE action='block' 
+       AND (
+         (userId=? AND targetUserId=?) 
+         OR 
+         (userId=? AND targetUserId=?)
+       ) LIMIT 1`
+    )
+    .bind(
+      String(viewerId),
+      String(targetId),
+      String(targetId),
+      String(viewerId)
+    )
+    .first();
+
     return !!row;
   } catch (_) {
     return false;
@@ -51,7 +64,6 @@ export async function hashPassword(password) {
 export async function verifyPassword(password, hash) {
   try {
     if (!password || !hash) return false;
-    // Simplified to clean modern async await format instead of complex promise wraps
     return await bcryptjs.compare(password, hash);
   } catch (error) {
     console.error("Password verification failed:", error);
@@ -59,9 +71,13 @@ export async function verifyPassword(password, hash) {
   }
 }
 
-// ── Sessions ────────────────────────────────────────────────────────────
+
+// ── Sessions ─────────────────────────────────────────────
+
 function bytesToHex(bytes) {
-  return [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
+  return [...bytes]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export function generateToken() {
@@ -78,145 +94,368 @@ export async function createSession(db, userId) {
   const token = generateToken();
   const tokenHash = await sha256Hex(token);
   const now = Date.now();
+
   await db.prepare(
-    "INSERT INTO sessions (tokenHash, userId, createdAt, expiresAt) VALUES (?,?,?,?)"
-  ).bind(tokenHash, userId, now, now + SESSION_TTL_MS).run();
+    `INSERT INTO sessions 
+     (tokenHash, userId, createdAt, expiresAt) 
+     VALUES (?,?,?,?)`
+  )
+  .bind(
+    tokenHash,
+    userId,
+    now,
+    now + SESSION_TTL_MS
+  )
+  .run();
+
   return token;
 }
 
 export async function destroySession(db, token) {
   if (!token) return;
+
   const tokenHash = await sha256Hex(token);
-  await db.prepare("DELETE FROM sessions WHERE tokenHash = ?").bind(tokenHash).run();
+
+  await db.prepare(
+    "DELETE FROM sessions WHERE tokenHash = ?"
+  )
+  .bind(tokenHash)
+  .run();
 }
 
-// Used after a password reset via security question — that's a weaker proof
-// of identity than a real password, so any sessions issued before the reset
-// (on any device) get revoked and everyone has to sign in again.
 export async function destroyAllSessions(db, userId) {
-  await db.prepare("DELETE FROM sessions WHERE userId = ?").bind(userId).run();
+  await db.prepare(
+    "DELETE FROM sessions WHERE userId = ?"
+  )
+  .bind(userId)
+  .run();
 }
 
 export async function verifyAuth(request, db) {
   const h = request.headers.get("Authorization") || "";
+
   if (!h.startsWith("Bearer ")) return null;
+
   const token = h.slice(7);
+
   if (!token) return null;
+
   const tokenHash = await sha256Hex(token);
-  const session = await db.prepare("SELECT * FROM sessions WHERE tokenHash = ?").bind(tokenHash).first();
+
+  const session = await db.prepare(
+    "SELECT * FROM sessions WHERE tokenHash = ?"
+  )
+  .bind(tokenHash)
+  .first();
+
   if (!session) return null;
+
   if (session.expiresAt < Date.now()) {
-    await db.prepare("DELETE FROM sessions WHERE tokenHash = ?").bind(tokenHash).run();
+
+    await db.prepare(
+      "DELETE FROM sessions WHERE tokenHash = ?"
+    )
+    .bind(tokenHash)
+    .run();
+
     return null;
   }
-  const user = await db.prepare("SELECT * FROM users WHERE id = ?").bind(session.userId).first();
+
+  const user = await db.prepare(
+    "SELECT * FROM users WHERE id = ?"
+  )
+  .bind(session.userId)
+  .first();
+
   return user || null;
 }
 
-// ── Admin ───────────────────────────────────────────────────────────────
+
+// ── Admin ─────────────────────────────────────────────
+
 export function isAdmin(user) {
-  return !!user && (user.isAdmin === 1 || user.isAdmin === true);
+  return !!user && (
+    user.isAdmin === 1 ||
+    user.isAdmin === true
+  );
 }
 
-// ── Lightweight rate limiting ───────────────────────────────────────────
-export async function checkRateLimit(kv, key, limit, windowSeconds) {
+
+// ── Rate Limit ─────────────────────────────────────────
+
+export async function checkRateLimit(
+  kv,
+  key,
+  limit,
+  windowSeconds
+) {
   if (!kv) return false;
+
   const rkey = `ratelimit:${key}`;
+
   let count = 0;
+
   try {
     const existing = await kv.get(rkey);
-    count = existing ? (parseInt(existing, 10) || 0) : 0;
+    count = existing ? parseInt(existing, 10) || 0 : 0;
   } catch (_) {}
+
   if (count >= limit) return true;
+
   try {
-    await kv.put(rkey, String(count + 1), { expirationTtl: windowSeconds });
+    await kv.put(
+      rkey,
+      String(count + 1),
+      {
+        expirationTtl: windowSeconds
+      }
+    );
   } catch (_) {}
+
   return false;
 }
 
+
 export function clientIp(request) {
-  return request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown";
+  return (
+    request.headers.get("CF-Connecting-IP") ||
+    request.headers.get("X-Forwarded-For") ||
+    "unknown"
+  );
 }
 
-// ── Moderation audit log ─────────────────────────────────────────────────
-export async function logModeration(db, { type, reason, authorId = null, postId = null }) {
+
+// ── Moderation ─────────────────────────────────────────
+
+export async function logModeration(
+  db,
+  {
+    type,
+    reason,
+    authorId = null,
+    postId = null
+  }
+) {
   try {
-    const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+    const id =
+      crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2)}`;
+
     await db.prepare(
-      "INSERT INTO moderation_log (id, type, reason, authorId, postId, timestamp) VALUES (?,?,?,?,?,?)"
-    ).bind(id, type, reason, authorId, postId, Date.now()).run();
+      `INSERT INTO moderation_log
+       (id,type,reason,authorId,postId,timestamp)
+       VALUES (?,?,?,?,?,?)`
+    )
+    .bind(
+      id,
+      type,
+      reason,
+      authorId,
+      postId,
+      Date.now()
+    )
+    .run();
+
   } catch (_) {}
 }
 
+
+// ── User Formatter ─────────────────────────────────────
+
 export async function shapeUser(row, db) {
+
   let followers = [];
   let following = [];
+  let blocked = [];
+  let muted = [];
+
 
   try {
-    const followersRes = await db.prepare(
-      "SELECT followerId FROM follows WHERE followingId = ?"
-    ).bind(row.id).all();
 
-    followers = (followersRes?.results || [])
+    const res = await db.prepare(
+      "SELECT followerId FROM follows WHERE followingId = ?"
+    )
+    .bind(row.id)
+    .all();
+
+    followers =
+      (res.results || [])
       .map(r => String(r.followerId));
 
   } catch (_) {}
 
-  try {
-    const followingRes = await db.prepare(
-      "SELECT followingId FROM follows WHERE followerId = ?"
-    ).bind(row.id).all();
 
-    following = (followingRes?.results || [])
+  try {
+
+    const res = await db.prepare(
+      "SELECT followingId FROM follows WHERE followerId = ?"
+    )
+    .bind(row.id)
+    .all();
+
+    following =
+      (res.results || [])
       .map(r => String(r.followingId));
 
   } catch (_) {}
 
-  let blocked = [];
-  let muted = [];
 
   try {
-    const blockedRes = await db.prepare(
-      "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action='block'"
-    ).bind(row.id).all();
 
-    blocked = (blockedRes?.results || [])
+    const res = await db.prepare(
+      `SELECT targetUserId 
+       FROM user_moderation 
+       WHERE userId=? 
+       AND action='block'`
+    )
+    .bind(row.id)
+    .all();
+
+    blocked =
+      (res.results || [])
       .map(r => String(r.targetUserId));
 
   } catch (_) {}
 
-  try {
-    const mutedRes = await db.prepare(
-      "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action='mute'"
-    ).bind(row.id).all();
 
-    muted = (mutedRes?.results || [])
+  try {
+
+    const res = await db.prepare(
+      `SELECT targetUserId 
+       FROM user_moderation 
+       WHERE userId=? 
+       AND action='mute'`
+    )
+    .bind(row.id)
+    .all();
+
+    muted =
+      (res.results || [])
       .map(r => String(r.targetUserId));
 
   } catch (_) {}
+
 
   return {
+
     id: String(row.id),
 
     username: row.username,
-    displayName: row.displayName,
-    bio: row.bio,
 
-    avatar: row.avatar,
-    avatarColor: row.avatarColor,
-    avatarStyle: row.avatarStyle,
-    avatarImage: row.avatarImage,
+    displayName:
+      row.displayName ??
+      row.display_name ??
+      row.username,
 
-    joinedAt: row.joinedAt,
+    bio: row.bio || "",
 
-    secQuestion: row.secQuestion || null,
+    avatar:
+      row.avatar || null,
+
+    avatarColor:
+      row.avatarColor ??
+      row.avatar_color ??
+      null,
+
+    avatarStyle:
+      row.avatarStyle ??
+      row.avatar_style ??
+      null,
+
+    avatarImage:
+      row.avatarImage ??
+      row.avatar_image ??
+      null,
+
+    joinedAt:
+      row.joinedAt ??
+      row.joined_at ??
+      null,
+
+    secQuestion:
+      row.secQuestion ??
+      row.sec_question ??
+      null,
 
     followers,
     following,
     blocked,
     muted,
 
-    isAdmin: Number(row.isAdmin) === 1,
+    isAdmin:
+      Number(row.isAdmin) === 1
+  };
+}
+
+
+// ── Post Formatter (FIXES BUILD ERROR) ─────────────────
+
+export async function shapePost(row, db) {
+
+  if (!row) return null;
+
+  let user = null;
+
+  try {
+
+    if (row.userId) {
+
+      const userRow = await db.prepare(
+        "SELECT * FROM users WHERE id = ?"
+      )
+      .bind(row.userId)
+      .first();
+
+      if (userRow) {
+        user = await shapeUser(userRow, db);
+      }
+
+    }
+
+  } catch (_) {}
+
+
+  return {
+
+    id: String(row.id),
+
+    userId:
+      String(
+        row.userId ??
+        row.user_id
+      ),
+
+    content:
+      row.content || "",
+
+    image:
+      row.image || null,
+
+    createdAt:
+      row.createdAt ??
+      row.created_at ??
+      null,
+
+    updatedAt:
+      row.updatedAt ??
+      row.updated_at ??
+      null,
+
+    likes:
+      Number(row.likes || 0),
+
+    comments:
+      Number(row.comments || 0),
+
+    tags:
+      row.tags || [],
+
+    user
+
   };
 }
 
