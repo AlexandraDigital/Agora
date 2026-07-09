@@ -1,11 +1,7 @@
 /**
  * Moderation UI Components for Agora
  * Add these to your src/components/ directory
- *
- * NOTE: this file is not currently imported anywhere in the app (dead code).
- * Fixed the missing React import below so it's ready to wire in whenever needed.
  */
-import { useState, useEffect } from "react";
 
 // 1. Report Post Modal
 export function ReportPostModal({ postId, onClose, onSubmit }) {
