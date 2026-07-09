@@ -211,7 +211,7 @@ export async function shapeUser(row, db) {
     ).bind(row.id).all();
     muted = (mutedRes?.results || []).map(r => r.targetUserId);
   } catch (_) {}
-
+console.log(user);
   return {
     id: row.id,
     username: row.username,
