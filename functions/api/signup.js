@@ -21,7 +21,7 @@ export async function onRequestPost({ request, env }) {
     }
 
     // 2. Parse Incoming Request Data
-    const { username, password, displayName, bio, securityQuestion, securityAnswer } = await request.json();
+    const { username, password, displayName, bio } = await request.json();
 
     // 3. Input Validation Bounds
     if (!username || !password || !displayName) {
@@ -39,12 +39,6 @@ export async function onRequestPost({ request, env }) {
     if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
       return errResponse("Password should include both letters and numbers", 400);
     }
-    if (!securityQuestion || !securityQuestion.trim()) {
-      return errResponse("Please choose a security question", 400);
-    }
-    if (!securityAnswer || securityAnswer.trim().length < 2) {
-      return errResponse("Security answer must be at least 2 characters", 400);
-    }
 
     // 4. Duplicate Check against D1
     const existing = await db.prepare("SELECT id FROM users WHERE username = ?").bind(username).first();
@@ -59,18 +53,14 @@ export async function onRequestPost({ request, env }) {
     
     // 6. Securely Hash Password via bcryptjs
     const pw_hash = await hashPassword(password);
-    // Same treatment as the password: hashed, never stored in the clear.
-    // Normalized (trimmed + lowercased) so "Blue", "blue", " blue " all match
-    // later at reset time — security answers shouldn't be case-sensitive.
-    const secAnswerHash = await hashPassword(securityAnswer.trim().toLowerCase());
     const rightNow = Date.now();
 
     // 7. SQL Execution — id is NOT bound here. users.id is INTEGER PRIMARY KEY
     // AUTOINCREMENT, so D1 assigns it; we read the assigned id back from meta below.
     const result = await db.prepare(
-      "INSERT INTO users (username, displayName, bio, pw_hash, avatar, avatarColor, avatarStyle, joinedAt, secQuestion, secAnswerHash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO users (username, displayName, bio, pw_hash, avatar, avatarColor, avatarStyle, joinedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
-    .bind(username, displayName, bio || "", pw_hash, initials, avatarColor, avatarStyle, rightNow, securityQuestion.trim(), secAnswerHash)
+    .bind(username, displayName, bio || "", pw_hash, initials, avatarColor, avatarStyle, rightNow)
     .run();
 
     const id = result.meta.last_row_id;
@@ -88,8 +78,7 @@ export async function onRequestPost({ request, env }) {
       avatarColor, 
       avatarStyle,
       joinedAt: rightNow, 
-      isAdmin: 0,
-      secQuestion: securityQuestion.trim()
+      isAdmin: 0 
     }, db);
 
     // 10. Final Successful Handshake

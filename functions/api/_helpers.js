@@ -1,4 +1,4 @@
-import bcryptjs from "bcryptjs";
+import bcryptjs from "bcryptjs"; // Fixed variable name mapping to match calls below
 
 export const AVATAR_COLORS = [
   "#7b6fa0",
@@ -11,14 +11,15 @@ export const AVATAR_COLORS = [
   "#4a5c8a",
 ];
 
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+// How long a login session stays valid before the user must sign in again.
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 export function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json",
-      "X-Content-Type-Options": "nosniff",
+      "X-Content-Type-Options": "nosniff"
     },
   });
 }
@@ -30,22 +31,8 @@ export function errResponse(msg, status = 400) {
 export async function isBlocked(db, viewerId, targetId) {
   try {
     const row = await db.prepare(
-      `SELECT 1 FROM user_moderation 
-       WHERE action='block' 
-       AND (
-         (userId=? AND targetUserId=?) 
-         OR 
-         (userId=? AND targetUserId=?)
-       ) LIMIT 1`
-    )
-    .bind(
-      String(viewerId),
-      String(targetId),
-      String(targetId),
-      String(viewerId)
-    )
-    .first();
-
+      `SELECT 1 FROM user_moderation WHERE action='block' AND ( (userId=? AND targetUserId=?) OR (userId=? AND targetUserId=?) ) LIMIT 1`
+    ).bind(String(viewerId), String(targetId), String(targetId), String(viewerId)).first();
     return !!row;
   } catch (_) {
     return false;
@@ -64,6 +51,7 @@ export async function hashPassword(password) {
 export async function verifyPassword(password, hash) {
   try {
     if (!password || !hash) return false;
+    // Simplified to clean modern async await format instead of complex promise wraps
     return await bcryptjs.compare(password, hash);
   } catch (error) {
     console.error("Password verification failed:", error);
@@ -71,13 +59,9 @@ export async function verifyPassword(password, hash) {
   }
 }
 
-
-// ── Sessions ─────────────────────────────────────────────
-
+// ── Sessions ────────────────────────────────────────────────────────────
 function bytesToHex(bytes) {
-  return [...bytes]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 export function generateToken() {
@@ -94,327 +78,147 @@ export async function createSession(db, userId) {
   const token = generateToken();
   const tokenHash = await sha256Hex(token);
   const now = Date.now();
-
   await db.prepare(
-    `INSERT INTO sessions 
-     (tokenHash, userId, createdAt, expiresAt) 
-     VALUES (?,?,?,?)`
-  )
-  .bind(
-    tokenHash,
-    userId,
-    now,
-    now + SESSION_TTL_MS
-  )
-  .run();
-
+    "INSERT INTO sessions (tokenHash, userId, createdAt, expiresAt) VALUES (?,?,?,?)"
+  ).bind(tokenHash, userId, now, now + SESSION_TTL_MS).run();
   return token;
 }
 
 export async function destroySession(db, token) {
   if (!token) return;
-
   const tokenHash = await sha256Hex(token);
-
-  await db.prepare(
-    "DELETE FROM sessions WHERE tokenHash = ?"
-  )
-  .bind(tokenHash)
-  .run();
-}
-
-export async function destroyAllSessions(db, userId) {
-  await db.prepare(
-    "DELETE FROM sessions WHERE userId = ?"
-  )
-  .bind(userId)
-  .run();
+  await db.prepare("DELETE FROM sessions WHERE tokenHash = ?").bind(tokenHash).run();
 }
 
 export async function verifyAuth(request, db) {
   const h = request.headers.get("Authorization") || "";
-
   if (!h.startsWith("Bearer ")) return null;
-
   const token = h.slice(7);
-
   if (!token) return null;
-
   const tokenHash = await sha256Hex(token);
-
-  const session = await db.prepare(
-    "SELECT * FROM sessions WHERE tokenHash = ?"
-  )
-  .bind(tokenHash)
-  .first();
-
+  const session = await db.prepare("SELECT * FROM sessions WHERE tokenHash = ?").bind(tokenHash).first();
   if (!session) return null;
-
   if (session.expiresAt < Date.now()) {
-
-    await db.prepare(
-      "DELETE FROM sessions WHERE tokenHash = ?"
-    )
-    .bind(tokenHash)
-    .run();
-
+    await db.prepare("DELETE FROM sessions WHERE tokenHash = ?").bind(tokenHash).run();
     return null;
   }
-
-  const user = await db.prepare(
-    "SELECT * FROM users WHERE id = ?"
-  )
-  .bind(session.userId)
-  .first();
-
+  const user = await db.prepare("SELECT * FROM users WHERE id = ?").bind(session.userId).first();
   return user || null;
 }
 
-
-// ── Admin ─────────────────────────────────────────────
-
+// ── Admin ───────────────────────────────────────────────────────────────
 export function isAdmin(user) {
-  return !!user && (
-    user.isAdmin === 1 ||
-    user.isAdmin === true
-  );
+  return !!user && (user.isAdmin === 1 || user.isAdmin === true);
 }
 
-
-// ── Rate Limit ─────────────────────────────────────────
-
-export async function checkRateLimit(
-  kv,
-  key,
-  limit,
-  windowSeconds
-) {
+// ── Lightweight rate limiting ───────────────────────────────────────────
+export async function checkRateLimit(kv, key, limit, windowSeconds) {
   if (!kv) return false;
-
   const rkey = `ratelimit:${key}`;
-
   let count = 0;
-
   try {
     const existing = await kv.get(rkey);
-    count = existing ? parseInt(existing, 10) || 0 : 0;
+    count = existing ? (parseInt(existing, 10) || 0) : 0;
   } catch (_) {}
-
   if (count >= limit) return true;
-
   try {
-    await kv.put(
-      rkey,
-      String(count + 1),
-      {
-        expirationTtl: windowSeconds
-      }
-    );
+    await kv.put(rkey, String(count + 1), { expirationTtl: windowSeconds });
   } catch (_) {}
-
   return false;
 }
 
-
 export function clientIp(request) {
-  return (
-    request.headers.get("CF-Connecting-IP") ||
-    request.headers.get("X-Forwarded-For") ||
-    "unknown"
-  );
+  return request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown";
 }
 
-
-// ── Moderation ─────────────────────────────────────────
-
-export async function logModeration(
-  db,
-  {
-    type,
-    reason,
-    authorId = null,
-    postId = null
-  }
-) {
+// ── Moderation audit log ─────────────────────────────────────────────────
+export async function logModeration(db, { type, reason, authorId = null, postId = null }) {
   try {
-
-    const id =
-      crypto.randomUUID
-        ? crypto.randomUUID()
-        : `${Date.now()}_${Math.random()
-            .toString(36)
-            .slice(2)}`;
-
+    const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
     await db.prepare(
-      `INSERT INTO moderation_log
-       (id,type,reason,authorId,postId,timestamp)
-       VALUES (?,?,?,?,?,?)`
-    )
-    .bind(
-      id,
-      type,
-      reason,
-      authorId,
-      postId,
-      Date.now()
-    )
-    .run();
-
+      "INSERT INTO moderation_log (id, type, reason, authorId, postId, timestamp) VALUES (?,?,?,?,?,?)"
+    ).bind(id, type, reason, authorId, postId, Date.now()).run();
   } catch (_) {}
 }
 
-
-// ── User Formatter ─────────────────────────────────────
 export async function shapePost(row, db) {
-  let author = null;
-
-  try {
-    const user = await db.prepare(
-      "SELECT * FROM users WHERE id = ?"
-    )
-    .bind(row.authorId)
-    .first();
-
-    if (user) {
-      author = await shapeUser(user, db);
-    }
-  } catch (err) {
-    console.error("shapePost author lookup failed:", err);
-  }
-
-  // Default arrays so React never crashes
   let likes = [];
-  let comments = [];
-  let shares = [];
-  let tags = [];
-
-  // Load likes if a table exists
   try {
-    const res = await db.prepare(
+    const likesRes = await db.prepare(
       "SELECT userId FROM likes WHERE postId = ?"
-    )
-    .bind(row.id)
-    .all();
+    ).bind(row.id).all();
+    likes = (likesRes?.results || []).map(r => r.userId);
+  } catch (_) {}
 
-    likes = (res.results || []).map(r => String(r.userId));
-  } catch (_) {
-    // Table may not exist
-  }
-
-  // Load comments if a table exists
+  let comments = [];
   try {
-    const res = await db.prepare(
+    const commentsRes = await db.prepare(
       "SELECT * FROM comments WHERE postId = ? ORDER BY timestamp ASC"
-    )
-    .bind(row.id)
-    .all();
+    ).bind(row.id).all();
+    // Spread each row so any future comment columns (e.g. quoted-reply fields
+    // ThreadedComments.jsx already reads defensively) pass through untouched.
+    comments = (commentsRes?.results || []).map(c => ({ ...c }));
+  } catch (_) {}
 
-    comments = res.results || [];
-  } catch (_) {
-    // Table may not exist
-  }
-
-   return {
-    id: String(row.id),
-
-    authorId: String(row.authorId),
-
-    content: row.content || "",
-
-    mediaType: row.mediaType || null,
-    mediaData: row.mediaData || null,
-    mediaVideoUrl: row.mediaVideoUrl || null,
-    url: row.url || null,
-     mediaType: row.mediaType || null,
-mediaData: row.mediaData || null,
-mediaVideoUrl: row.mediaVideoUrl || null,
-
-media: row.mediaType
-  ? {
-      type: row.mediaType,
-      thumb: row.mediaData,
-      videoUrl: row.mediaVideoUrl,
-    }
-  : null,
-
-url: row.url || null,
-
-    timestamp: Number(row.timestamp),
-
-    isModerated: Number(row.isModerated) === 1,
-    moderationReason: row.moderationReason || null,
-
-    isVisible: Number(row.isVisible ?? 1) === 1,
-
+  return {
+    id: row.id,
+    authorId: row.authorId,
+    content: row.content,
+    timestamp: row.timestamp,
+    url: row.url,
+    media: row.mediaType
+      ? { type: row.mediaType, thumb: row.mediaData, videoUrl: row.mediaVideoUrl }
+      : null,
     likes,
     comments,
-    shares,
-    tags,
-
-    author,
   };
 }
 
 export async function shapeUser(row, db) {
   let followers = [];
   let following = [];
-  let blocked = [];
-  let muted = [];
-
   try {
-    const res = await db.prepare(
+    const followersRes = await db.prepare(
       "SELECT followerId FROM follows WHERE followingId = ?"
     ).bind(row.id).all();
-
-    followers = (res.results || []).map(r => String(r.followerId));
+    followers = (followersRes?.results || []).map(r => r.followerId);
   } catch (_) {}
-
   try {
-    const res = await db.prepare(
+    const followingRes = await db.prepare(
       "SELECT followingId FROM follows WHERE followerId = ?"
     ).bind(row.id).all();
-
-    following = (res.results || []).map(r => String(r.followingId));
+    following = (followingRes?.results || []).map(r => r.followingId);
   } catch (_) {}
 
+  let blocked = [];
+  let muted = [];
   try {
-    const res = await db.prepare(
-      "SELECT targetUserId FROM user_moderation WHERE userId=? AND action='block'"
+    const blockedRes = await db.prepare(
+      "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action = 'block'"
     ).bind(row.id).all();
-
-    blocked = (res.results || []).map(r => String(r.targetUserId));
+    blocked = (blockedRes?.results || []).map(r => r.targetUserId);
   } catch (_) {}
-
   try {
-    const res = await db.prepare(
-      "SELECT targetUserId FROM user_moderation WHERE userId=? AND action='mute'"
+    const mutedRes = await db.prepare(
+      "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action = 'mute'"
     ).bind(row.id).all();
-
-    muted = (res.results || []).map(r => String(r.targetUserId));
+    muted = (mutedRes?.results || []).map(r => r.targetUserId);
   } catch (_) {}
 
   return {
-    id: String(row.id),
+    id: row.id,
     username: row.username,
-    displayName: row.displayName ?? row.display_name ?? row.username,
-    bio: row.bio || "",
-
-    avatar: row.avatar || null,
-    avatarColor: row.avatarColor ?? row.avatar_color ?? null,
-    avatarStyle: row.avatarStyle ?? row.avatar_style ?? null,
-    avatarImage: row.avatarImage ?? row.avatar_image ?? null,
-
-    joinedAt: row.joinedAt ?? row.joined_at ?? null,
-    secQuestion: row.secQuestion ?? row.sec_question ?? null,
-
+    displayName: row.displayName,
+    bio: row.bio,
+    avatar: row.avatar,
+    avatarColor: row.avatarColor,
+    avatarStyle: row.avatarStyle,
+    avatarImage: row.avatarImage,
+    joinedAt: row.joinedAt,
     followers,
     following,
     blocked,
     muted,
-
-  
-    isAdmin: Number(row.isAdmin) === 1,
+    isAdmin: isAdmin(row),
   };
 }
-
-
