@@ -1764,21 +1764,47 @@ export default function Agora() {
   };
 
   const follow = async (uid) => {
-    const res = await api.post(`/api/follow/${uid}`, {}, token);
-    if (res.error) {
-      setToast({ message: "Couldn't update follow status. Please try again.", type: "error" });
-      return;
-    }
-    // Only reflect the change locally once the request has actually succeeded.
-    const isFollowing = cu.following.includes(uid);
-    const newCu = { ...cu, following: isFollowing ? cu.following.filter(id=>id!==uid) : [...cu.following, uid] };
-    setCu(newCu);
-    localStorage.setItem("ag_cu", JSON.stringify(newCu));
-    setUsers(prev => prev.map(u => {
-      if (u.id === uid) return { ...u, followers: isFollowing ? u.followers.filter(id=>id!==cu.id) : [...u.followers, cu.id] };
-      return u;
-    }));
+  const isFollowing = cu.following.includes(uid);
+
+  const res = await api.post(
+    `/api/follow/${uid}`,
+    {
+      action: isFollowing ? "unfollow" : "follow",
+    },
+    token
+  );
+
+  if (res.error) {
+    setToast({
+      message: res.error || "Couldn't update follow status.",
+      type: "error",
+    });
+    return;
+  }
+
+  const newCu = {
+    ...cu,
+    following: isFollowing
+      ? cu.following.filter(id => id !== uid)
+      : [...cu.following, uid],
   };
+
+  setCu(newCu);
+  localStorage.setItem("ag_cu", JSON.stringify(newCu));
+
+  setUsers(prev =>
+    prev.map(u =>
+      u.id === uid
+        ? {
+            ...u,
+            followers: isFollowing
+              ? u.followers.filter(id => id !== cu.id)
+              : [...u.followers, cu.id],
+          }
+        : u
+    )
+  );
+};
 
   const like = async (pid) => {
     await api.post(`/api/posts/${pid}/like`, {}, token);
