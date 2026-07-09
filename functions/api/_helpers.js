@@ -148,49 +148,74 @@ export async function logModeration(db, { type, reason, authorId = null, postId 
   } catch (_) {}
 }
 
-export async function shapePost(row, db) {
-  let likes = [];
+export async function shapeUser(row, db) {
+  let followers = [];
+  let following = [];
+
   try {
-    const likesRes = await db.prepare(
-      "SELECT userId FROM likes WHERE postId = ?"
+    const followersRes = await db.prepare(
+      "SELECT followerId FROM follows WHERE followingId = ?"
     ).bind(row.id).all();
 
-    likes = (likesRes?.results || [])
-      .map(r => String(r.userId));
+    followers = (followersRes?.results || [])
+      .map(r => String(r.followerId));
 
   } catch (_) {}
 
-  let comments = [];
   try {
-    const commentsRes = await db.prepare(
-      "SELECT * FROM comments WHERE postId = ? ORDER BY timestamp ASC"
+    const followingRes = await db.prepare(
+      "SELECT followingId FROM follows WHERE followerId = ?"
     ).bind(row.id).all();
 
-    comments = (commentsRes?.results || []).map(c => ({
-      ...c,
-      id: String(c.id),
-      postId: String(c.postId),
-      userId: String(c.userId),
-    }));
+    following = (followingRes?.results || [])
+      .map(r => String(r.followingId));
+
+  } catch (_) {}
+
+  let blocked = [];
+  let muted = [];
+
+  try {
+    const blockedRes = await db.prepare(
+      "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action='block'"
+    ).bind(row.id).all();
+
+    blocked = (blockedRes?.results || [])
+      .map(r => String(r.targetUserId));
+
+  } catch (_) {}
+
+  try {
+    const mutedRes = await db.prepare(
+      "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action='mute'"
+    ).bind(row.id).all();
+
+    muted = (mutedRes?.results || [])
+      .map(r => String(r.targetUserId));
 
   } catch (_) {}
 
   return {
     id: String(row.id),
-    authorId: String(row.authorId),
-    content: row.content,
-    timestamp: row.timestamp,
-    url: row.url,
 
-    media: row.mediaType
-      ? {
-          type: row.mediaType,
-          thumb: row.mediaData,
-          videoUrl: row.mediaVideoUrl
-        }
-      : null,
+    username: row.username,
+    displayName: row.displayName,
+    bio: row.bio,
 
-    likes,
-    comments,
+    avatar: row.avatar,
+    avatarColor: row.avatarColor,
+    avatarStyle: row.avatarStyle,
+    avatarImage: row.avatarImage,
+
+    joinedAt: row.joinedAt,
+
+    secQuestion: row.secQuestion || null,
+
+    followers,
+    following,
+    blocked,
+    muted,
+
+    isAdmin: Number(row.isAdmin) === 1,
   };
 }
