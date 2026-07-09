@@ -1677,7 +1677,7 @@ export default function Agora() {
   // Change password now lives on the pre-login screen: verify identity via
   // /api/login (reusing currentPassword) to get a fresh token, then change it.
   // On success we're already holding a valid session, so log straight in.
-  const changePassword = async () => {
+  const changePasswordFromAuth = async () => {
   if (passwordForm.newPassword !== passwordForm.confirmPassword) {
     alert("Passwords do not match");
     return;
