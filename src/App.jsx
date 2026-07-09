@@ -167,6 +167,12 @@ function Toast({ message, type = "error", onClose }) {
   const textColor = type === "success" ? C.success : "#9b1c1c";
   const borderColor = type === "success" ? "#b2d8c0" : "#f4b8b4";
 
+ const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: ""
+  });
+  
   return (
     <div style={{
       position: "fixed",
