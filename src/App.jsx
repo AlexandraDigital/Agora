@@ -1773,10 +1773,16 @@ export default function Agora() {
 
   const onFollow = async (uid) => {
   try {
-    const res = await api.post(`/api/users/${uid}/follow`, {}, token);
+    // /api/follow/[id].js is the actual backend route (not /api/users/:id/follow,
+    // which has no matching function and was silently hitting the SPA fallback).
+    // It's a single toggle endpoint, so tell it which way based on current state.
+    const alreadyFollowing = (cu.following || []).includes(uid);
+    const action = alreadyFollowing ? "unfollow" : "follow";
+    const res = await api.post(`/api/follow/${uid}`, { action }, token);
 
     if (res.error) {
       console.log(res.error);
+      setToast({ message: res.error, type: "error" });
       return;
     }
 
@@ -1800,6 +1806,7 @@ export default function Agora() {
 
   } catch (err) {
     console.log("Follow error:", err);
+    setToast({ message: "Failed to update follow status. Please try again.", type: "error" });
   }
 };
 
@@ -1983,8 +1990,8 @@ export default function Agora() {
           <PWAInstallButton />
           <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={addComment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>
         </>}
-        {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow} hideCounts={hideCounts}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={addComment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} onMergePosts={mergePosts} hideCounts={hideCounts}/>}
+        {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={onFollow} hideCounts={hideCounts}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={onFollow} onBack={()=>setScreen("feed")} onLike={like} onComment={addComment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} onMergePosts={mergePosts} hideCounts={hideCounts}/>}
         {screen==="admin" && cu.isAdmin && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
         {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} onChangePassword={changePassword} onSetSecurityQuestion={setSecurityQuestion} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
       </div>
