@@ -278,8 +278,40 @@ export async function shapePost(row, db) {
     if (user) {
       author = await shapeUser(user, db);
     }
-  } catch (error) {
-    console.error("shapePost author lookup failed:", error);
+  } catch (err) {
+    console.error("shapePost author lookup failed:", err);
+  }
+
+  // Default arrays so React never crashes
+  let likes = [];
+  let comments = [];
+  let shares = [];
+  let tags = [];
+
+  // Load likes if a table exists
+  try {
+    const res = await db.prepare(
+      "SELECT userId FROM likes WHERE postId = ?"
+    )
+    .bind(row.id)
+    .all();
+
+    likes = (res.results || []).map(r => String(r.userId));
+  } catch (_) {
+    // Table may not exist
+  }
+
+  // Load comments if a table exists
+  try {
+    const res = await db.prepare(
+      "SELECT * FROM comments WHERE postId = ? ORDER BY timestamp ASC"
+    )
+    .bind(row.id)
+    .all();
+
+    comments = res.results || [];
+  } catch (_) {
+    // Table may not exist
   }
 
   return {
@@ -287,147 +319,24 @@ export async function shapePost(row, db) {
 
     authorId: String(row.authorId),
 
-    content: row.content,
+    content: row.content || "",
 
     mediaType: row.mediaType || null,
     mediaData: row.mediaData || null,
     mediaVideoUrl: row.mediaVideoUrl || null,
     url: row.url || null,
 
-    timestamp: row.timestamp,
+    timestamp: Number(row.timestamp),
 
     isModerated: Number(row.isModerated) === 1,
     moderationReason: row.moderationReason || null,
 
     isVisible: Number(row.isVisible ?? 1) === 1,
+    likes,
+    comments,
+    shares,
+    tags,
 
     author,
-  };
-}
-export async function shapeUser(row, db) {
-
-  let followers = [];
-  let following = [];
-  let blocked = [];
-  let muted = [];
-
-
-  try {
-
-    const res = await db.prepare(
-      "SELECT followerId FROM follows WHERE followingId = ?"
-    )
-    .bind(row.id)
-    .all();
-
-    followers =
-      (res.results || [])
-      .map(r => String(r.followerId));
-
-  } catch (_) {}
-
-
-  try {
-
-    const res = await db.prepare(
-      "SELECT followingId FROM follows WHERE followerId = ?"
-    )
-    .bind(row.id)
-    .all();
-
-    following =
-      (res.results || [])
-      .map(r => String(r.followingId));
-
-  } catch (_) {}
-
-
-  try {
-
-    const res = await db.prepare(
-      `SELECT targetUserId 
-       FROM user_moderation 
-       WHERE userId=? 
-       AND action='block'`
-    )
-    .bind(row.id)
-    .all();
-
-    blocked =
-      (res.results || [])
-      .map(r => String(r.targetUserId));
-
-  } catch (_) {}
-
-
-  try {
-
-    const res = await db.prepare(
-      `SELECT targetUserId 
-       FROM user_moderation 
-       WHERE userId=? 
-       AND action='mute'`
-    )
-    .bind(row.id)
-    .all();
-
-    muted =
-      (res.results || [])
-      .map(r => String(r.targetUserId));
-
-  } catch (_) {}
-
-
-  return {
-
-    id: String(row.id),
-
-    username: row.username,
-
-    displayName:
-      row.displayName ??
-      row.display_name ??
-      row.username,
-
-    bio: row.bio || "",
-
-    avatar:
-      row.avatar || null,
-
-    avatarColor:
-      row.avatarColor ??
-      row.avatar_color ??
-      null,
-
-    avatarStyle:
-      row.avatarStyle ??
-      row.avatar_style ??
-      null,
-
-    avatarImage:
-      row.avatarImage ??
-      row.avatar_image ??
-      null,
-
-    joinedAt:
-      row.joinedAt ??
-      row.joined_at ??
-      null,
-
-    secQuestion:
-      row.secQuestion ??
-      row.sec_question ??
-      null,
-
-    followers,
-    following,
-    blocked,
-    muted,
-
-    isAdmin:
-      Number(row.isAdmin) === 1
-  };
-}
-
-
-
+  }
+};
