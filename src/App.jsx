@@ -1861,22 +1861,19 @@ export default function Agora() {
     return true;
   };
 
-  const onFollow = async (uid) => {
+const onFollow = async (uid) => {
   try {
     // /api/follow/[id].js is the actual backend route (not /api/users/:id/follow,
     // which has no matching function and was silently hitting the SPA fallback).
     // It's a single toggle endpoint, so tell it which way based on current state.
     const alreadyFollowing = (cu.following || []).includes(uid);
     const action = alreadyFollowing ? "unfollow" : "follow";
-    const res = await api.post(`/api/follow/${uid}`, { action }, token);
 
-    if (res.error) {
-      console.log(res.error);
-      setToast({ message: res.error, type: "error" });
-      return;
-    }
+    // Save originals in case we need to revert
+    const oldCu = cu;
+    const oldUsers = users;
 
-    // Optimistic update so the button flips immediately regardless of network timing
+    // Update current user immediately
     setCu(prev => ({
       ...prev,
       following: action === "follow"
@@ -1884,26 +1881,59 @@ export default function Agora() {
         : (prev.following || []).filter(id => id !== uid)
     }));
 
-    // Refresh users list from D1. There's no /api/me endpoint in this backend,
-    // so reconcile our own following/followers off this same list instead —
-    // /api/users already runs every row through shapeUser, ourselves included.
+    // Update Explore/Profile list immediately
+    setUsers(prev =>
+      prev.map(user => {
+        if (user.id === cu.id) {
+          return {
+            ...user,
+            following: action === "follow"
+              ? [...(user.following || []), uid]
+              : (user.following || []).filter(id => id !== uid)
+          };
+        }
+
+        if (user.id === uid) {
+          return {
+            ...user,
+            followers: action === "follow"
+              ? [...(user.followers || []), cu.id]
+              : (user.followers || []).filter(id => id !== cu.id)
+          };
+        }
+
+        return user;
+      })
+    );
+
+    const res = await api.post(`/api/follow/${uid}`, { action }, token);
+
+    if (res.error) {
+      setCu(oldCu);
+      setUsers(oldUsers);
+      setToast({ message: res.error, type: "error" });
+      return;
+    }
+
+    // Sync with database
     const freshUsers = await api.get("/api/users", token);
 
     if (!freshUsers.error) {
       setUsers(freshUsers);
+
       const freshSelf = freshUsers.find(u => u.id === cu.id);
+
       if (freshSelf) {
-        setCu(prev => ({
-          ...prev,
-          following: freshSelf.following || [],
-          followers: freshSelf.followers || []
-        }));
+        setCu(freshSelf);
       }
     }
 
   } catch (err) {
-    console.log("Follow error:", err);
-    setToast({ message: "Failed to update follow status. Please try again.", type: "error" });
+    console.log(err);
+    setToast({
+      message: "Failed to update follow status.",
+      type: "error"
+    });
   }
 };
 // Handles removing one, several, or all connections at once from the
