@@ -265,7 +265,45 @@ export async function logModeration(
 
 
 // ── User Formatter ─────────────────────────────────────
+export async function shapePost(row, db) {
+  let author = null;
 
+  try {
+    const user = await db.prepare(
+      "SELECT * FROM users WHERE id = ?"
+    )
+    .bind(row.authorId)
+    .first();
+
+    if (user) {
+      author = await shapeUser(user, db);
+    }
+  } catch (error) {
+    console.error("shapePost author lookup failed:", error);
+  }
+
+  return {
+    id: String(row.id),
+
+    authorId: String(row.authorId),
+
+    content: row.content,
+
+    mediaType: row.mediaType || null,
+    mediaData: row.mediaData || null,
+    mediaVideoUrl: row.mediaVideoUrl || null,
+    url: row.url || null,
+
+    timestamp: row.timestamp,
+
+    isModerated: Number(row.isModerated) === 1,
+    moderationReason: row.moderationReason || null,
+
+    isVisible: Number(row.isVisible ?? 1) === 1,
+
+    author,
+  };
+}
 export async function shapeUser(row, db) {
 
   let followers = [];
