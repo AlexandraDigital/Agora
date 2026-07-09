@@ -402,4 +402,4 @@ export async function shapeUser(row, db) {
     isAdmin: Number(row.isAdmin) === 1,
   };
 }
-};
+
