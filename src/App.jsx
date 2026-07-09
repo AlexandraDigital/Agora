@@ -1863,17 +1863,13 @@ export default function Agora() {
 
 const onFollow = async (uid) => {
   try {
-    // /api/follow/[id].js is the actual backend route (not /api/users/:id/follow,
-    // which has no matching function and was silently hitting the SPA fallback).
-    // It's a single toggle endpoint, so tell it which way based on current state.
     const alreadyFollowing = (cu.following || []).includes(uid);
     const action = alreadyFollowing ? "unfollow" : "follow";
 
-    // Save originals in case we need to revert
     const oldCu = cu;
     const oldUsers = users;
 
-    // Update current user immediately
+    // instant UI update
     setCu(prev => ({
       ...prev,
       following: action === "follow"
@@ -1881,10 +1877,9 @@ const onFollow = async (uid) => {
         : (prev.following || []).filter(id => id !== uid)
     }));
 
-    // Update Explore/Profile list immediately
     setUsers(prev =>
       prev.map(user => {
-        if (user.id === cu.id) {
+        if (user.id === oldCu.id) {
           return {
             ...user,
             following: action === "follow"
@@ -1897,8 +1892,8 @@ const onFollow = async (uid) => {
           return {
             ...user,
             followers: action === "follow"
-              ? [...(user.followers || []), cu.id]
-              : (user.followers || []).filter(id => id !== cu.id)
+              ? [...(user.followers || []), oldCu.id]
+              : (user.followers || []).filter(id => id !== oldCu.id)
           };
         }
 
@@ -1906,299 +1901,61 @@ const onFollow = async (uid) => {
       })
     );
 
-    const res = await api.post(`/api/follow/${uid}`, { action }, token);
+
+    const res = await api.post(
+      `/api/follow/${uid}`,
+      { action },
+      token
+    );
+
 
     if (res.error) {
       setCu(oldCu);
       setUsers(oldUsers);
-      setToast({ message: res.error, type: "error" });
+
+      setToast({
+        message: res.error,
+        type:"error"
+      });
+
       return;
     }
 
-    // Sync with database
+
+    // refresh D1 truth
     const freshUsers = await api.get("/api/users", token);
 
     if (!freshUsers.error) {
+
       setUsers(freshUsers);
 
-      const freshSelf = freshUsers.find(u => u.id === cu.id);
+      const freshSelf = freshUsers.find(
+        u => u.id === oldCu.id
+      );
 
       if (freshSelf) {
-        setCu(freshSelf);
+        setCu(prev => ({
+          ...prev,
+          following: freshSelf.following || [],
+          followers: freshSelf.followers || []
+        }));
+
+        localStorage.setItem(
+          "ag_cu",
+          JSON.stringify(freshSelf)
+        );
       }
     }
 
-  } catch (err) {
-    console.log(err);
+
+  } catch(err) {
+
+    console.log("Follow error:", err);
+
     setToast({
-      message: "Failed to update follow status.",
-      type: "error"
+      message:"Failed to update follow status.",
+      type:"error"
     });
   }
 };
-// Handles removing one, several, or all connections at once from the
-  // Connections screen. `type` is "followers" (force-remove someone who
-  // follows you — hits the new remove_follower action) or "following"
-  // (the same effect as tapping Unfollow on their profile, just from a
-  // list). Reuses onFollow's optimistic-update-plus-reconcile approach so
-  // both screens stay in sync no matter which one you acted from.
-  const removeConnections = async (uids, type) => {
-    const ids = Array.isArray(uids) ? uids : [uids];
-    if (ids.length === 0) return { ok: true, failedCount: 0 };
-    const action = type === "followers" ? "remove_follower" : "unfollow";
-
-    try {
-      const results = await Promise.all(
-        ids.map(uid => api.post(`/api/follow/${uid}`, { action }, token))
-      );
-      const failedIds = ids.filter((_, i) => results[i]?.error);
-      const succeededIds = ids.filter((_, i) => !results[i]?.error);
-
-      // Optimistic update so removed rows disappear immediately
-      setCu(prev => ({
-        ...prev,
-        followers: type === "followers"
-          ? (prev.followers || []).filter(id => !succeededIds.includes(id))
-          : prev.followers,
-        following: type === "following"
-          ? (prev.following || []).filter(id => !succeededIds.includes(id))
-          : prev.following,
-      }));
-
-      // Reconcile against D1 the same way onFollow does — no /api/me
-      // endpoint, so refresh the full users list and pull ourselves out of it.
-      const freshUsers = await api.get("/api/users", token);
-      if (!freshUsers.error) {
-        setUsers(freshUsers);
-        const freshSelf = freshUsers.find(u => u.id === cu.id);
-        if (freshSelf) {
-          setCu(prev => ({
-            ...prev,
-            following: freshSelf.following || [],
-            followers: freshSelf.followers || []
-          }));
-        }
-      }
-
-      if (failedIds.length) {
-        setToast({ message: `${failedIds.length} of ${ids.length} removals failed. Please try again.`, type: "error" });
-      }
-      return { ok: failedIds.length === 0, failedCount: failedIds.length };
-    } catch (err) {
-      console.log("Remove connections error:", err);
-      setToast({ message: "Failed to update connections. Please try again.", type: "error" });
-      return { ok: false, failedCount: ids.length };
-    }
-  };
-  const like = async (pid) => {
-    await api.post(`/api/posts/${pid}/like`, {}, token);
-    // Optimistic update
-    setPosts(prev => prev.map(p => {
-      if (p.id !== pid) return p;
-      const liked = p.likes.includes(cu.id);
-      return { ...p, likes: liked ? p.likes.filter(id=>id!==cu.id) : [...p.likes, cu.id] };
-    }));
-  };
-
-  const addComment = async (pid, text, parentCommentId = null, quotedCommentId = null) => {
-    const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId, quotedCommentId }, token);
-    if (res.error) {
-      setToast({ message: "Failed to post comment. Please try again.", type: "error" });
-      return;
-    }
-    setPosts(prev => prev.map(p => {
-      if (p.id !== pid) return p;
-      return { ...p, comments: [...p.comments, res] };
-    }));
-  };
-
-  const deletePost = async (pid) => {
-    const originalPosts = posts;
-    // Optimistic update
-    setPosts(prev => prev.filter(p => p.id !== pid));
-    try {
-      const res = await api.delete(`/api/posts/${pid}`, token);
-      if (res.error) {
-        // Revert on error
-        setPosts(originalPosts);
-        setToast({ message: "Failed to delete post. Please try again.", type: "error" });
-        throw new Error(res.error);
-      }
-      setToast({ message: "Post deleted.", type: "success" });
-    } catch (err) {
-      setPosts(originalPosts);
-      setToast({ message: "Failed to delete post. Please try again.", type: "error" });
-    }
-  };
-
-  const deleteComment = async (pid, cid) => {
-    const originalPosts = posts;
-    // Optimistic update
-    setPosts(prev => prev.map(p => {
-      if (p.id !== pid) return p;
-      return { ...p, comments: p.comments.filter(c => c.id !== cid) };
-    }));
-    try {
-      const res = await api.delete(`/api/posts/${pid}/comment/${cid}`, token);
-      if (res.error) {
-        // Revert on error
-        setPosts(originalPosts);
-        setToast({ message: "Failed to delete comment. Please try again.", type: "error" });
-        throw new Error(res.error);
-      }
-      setToast({ message: "Comment deleted.", type: "success" });
-    } catch (err) {
-      setPosts(originalPosts);
-      setToast({ message: "Failed to delete comment. Please try again.", type: "error" });
-    }
-  };
-
-  const editPost = async (pid, content, media) => {
-    const originalPosts = posts;
-    // Optimistic update
-    setPosts(prev => prev.map(p => {
-      if (p.id !== pid) return p;
-      return { ...p, content, ...(media && { media }) };
-    }));
-    try {
-      const res = await api.put(`/api/posts/${pid}`, { content, media }, token);
-      if (res.error) {
-        // Revert on error
-        setPosts(originalPosts);
-        setToast({ message: "Failed to update post. Please try again.", type: "error" });
-        throw new Error(res.error);
-      }
-      setToast({ message: "Post updated.", type: "success" });
-    } catch (err) {
-      setPosts(originalPosts);
-      setToast({ message: "Failed to update post. Please try again.", type: "error" });
-    }
-  };
-
-  const doPost = async (content, media, url) => {
-    const res = await api.post("/api/posts", { content, media: media ? { type:media.type, thumb:media.thumb, videoUrl:media.videoUrl||null } : null, url: url||null }, token);
-    if (res.error) return;
-    // Generate discussion prompt based on post content
-    const discussionPrompt = generateDiscussionPrompt(content);
-    const postWithPrompt = { ...res, discussionPrompt };
-    setPosts(prev => [postWithPrompt, ...prev]);
-    setScreen("feed");
-  };
-
-  // Folds posts fetched for a specific profile into the shared `posts` state
-  // instead of keeping a separate copy, so like/comment/delete/edit — which
-  // all operate on this same array — keep working no matter whose profile
-  // the posts came from.
-  const mergePosts = (fetched) => {
-    setPosts(prev => {
-      const seen = new Set(prev.map(p => p.id));
-      const additions = fetched.filter(p => !seen.has(p.id));
-      return additions.length ? [...prev, ...additions] : prev;
-    });
-  };
-
-  const updateProfile = async (updates) => {
-    const res = await api.put(`/api/users/${cu.id}`, updates, token);
-    if (res.error) return;
-    setCu(res);
-    localStorage.setItem("ag_cu", JSON.stringify(res));
-    setUsers(prev => prev.map(u => u.id === cu.id ? res : u));
-  };
-
-  const [editingAvatar, setEditingAvatar] = useState(false);
-
-  const handleSaveAvatar = async (data) => {
-    try {
-      const raw = await fetch(`${API}/api/users/${cu.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(data),
-      });
-      const text = await raw.text();
-      let res;
-      try { res = JSON.parse(text); } catch { alert("Save failed: " + text); return; }
-      if (!raw.ok || res.error) { alert("Save failed: " + (res.error || raw.status)); return; }
-      setCu(res);
-      localStorage.setItem("ag_cu", JSON.stringify(res));
-      setUsers(prev => prev.map(u => u.id === cu.id ? res : u));
-      setEditingAvatar(false);
-    } catch (err) {
-      alert("Save error: " + err.message);
-    }
-  };
-
-  const goUser=(user)=>{ setProfileUid(user.id); setScreen("profile"); };
-
-  const navItems=[
-    {id:"feed",label:"Home",icon:"⌂"},
-    {id:"explore",label:"Explore",icon:"◎"},
-    {id:"compose",label:"",icon:"+",special:true},
-    {id:"myprofile",label:"Me",icon:null},
-    {id:"admin",label:"Admin",icon:"⚙",adminOnly:true},
-    {id:"settings",label:"More",icon:"⚙"},
-  ]
-
-  const nav=(id)=>{
-    if(id==="compose"){setComposing(true);return;}
-    if(id==="myprofile"){setProfileUid(cu.id);setScreen("profile");return;}
-    if(id==="admin"){setScreen("admin");return;}
-    setScreen(id);
-  }
-
-  if (loading) return (
-    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ fontFamily:T.brand, fontSize:28, color:C.textMuted }}>agora</div>
-    </div>
-  );
-
-  if(!cu) return <AuthScreen onLogin={login} onSignup={signup} onForgotStart={forgotPasswordStart} onForgotReset={forgotPasswordReset}/>;
-
-  return (
-    <div style={{ minHeight:"100vh", background:C.bg }}>
-      <div style={{ position:"sticky", top:0, zIndex:50, background:C.dark, padding:"12px 20px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <img src="/agora_logo.png" alt="agora" style={{ height: 32, display: "block" }} />
-        <div style={{ display:"flex", gap:5, flexWrap:"wrap", justifyContent:"flex-end" }}>
-          {["chronological","no algorithm","no tracking"].map(b=>(
-            <span key={b} style={{ fontSize:9, padding:"2px 8px", borderRadius:10, border:"1px solid rgba(255,255,255,0.2)", color:"rgba(255,255,255,0.6)", fontFamily:T.mono }}>{b}</span>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ maxWidth:600, margin:"0 auto", padding:"20px 16px 100px" }}>
-        {mindful.showBreakNudge && <MindfulUseBanner sessionMinutes={mindful.sessionMinutes} onDismiss={mindful.dismissNudge} />}
-        {screen==="feed" && <>
-          <PWAInstallButton />
-          <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={addComment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>
-        </>}
-        {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={onFollow} hideCounts={hideCounts}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={onFollow} onBack={()=>setScreen("feed")} onLike={like} onComment={addComment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} onMergePosts={mergePosts} hideCounts={hideCounts} onOpenConnections={(m)=>{setConnectionsMode(m);setScreen("connections");}}/>}
-        {screen==="connections" && <ConnectionsScreen cu={cu} users={users} mode={connectionsMode} onBack={()=>setScreen("profile")} onRemove={removeConnections} onToast={setToast} onUser={goUser}/>}
-        {screen==="admin" && cu.isAdmin && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
-        {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} onChangePassword={changePassword} onSetSecurityQuestion={setSecurityQuestion} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
-      </div>
-
-      <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.surface, borderTop:`1px solid ${C.border}`, display:"flex", padding:"8px 0 18px", zIndex:50 }}>
-        {navItems.filter(item=>!item.adminOnly||cu.isAdmin).map(item=>{
-          const active=screen===item.id||(item.id==="myprofile"&&screen==="profile"&&profileUid===cu.id);
-          return (
-            <button key={item.id} onClick={()=>nav(item.id)} style={{ flex:1, background:"none", border:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:3, cursor:"pointer", color:active?C.accent:C.textMuted }}>
-              {item.special ? (
-                <div style={{ width:46, height:46, borderRadius:"50%", background:C.accent, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:26, lineHeight:1, marginTop:-10 }}>+</div>
-              ) : item.id==="myprofile" ? (
-                <Av user={cu} size={28}/>
-              ) : (
-                <span style={{ fontSize:20 }}>{item.icon}</span>
-              )}
-              {!item.special && <span style={{ fontSize:10, fontFamily:T.body }}>{item.label}</span>}
-            </button>
-          );
-        })}
-      </div>
-
-      {editingAvatar && <AvatarCustomizer user={cu} token={token} onSave={handleSaveAvatar} onCancel={()=>setEditingAvatar(false)}/>}
-      {composing && <ComposeModal cu={cu} token={token} onPost={(content,media,url)=>{doPost(content,media,url);}} onClose={()=>setComposing(false)}/> }
-      {toast && <Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
-    </div>
-  );
 }
-
