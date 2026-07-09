@@ -956,13 +956,16 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
         </div>
         {user.bio && <div style={{ fontSize:14, marginTop:14, fontFamily:T.body, lineHeight:1.5, color:C.text }}>{user.bio}</div>}
         <div style={{ display:"flex", gap:24, marginTop:16, borderTop:`1px solid ${C.border}`, paddingTop:14 }}>
-          {[["Posts",userPosts.length],["Followers",(user.followers || []).length],
-["Following",(user.following || []).length]].map(([l,v])=>(
-            <div key={l}>
+          {[["Posts","posts",userPosts.length],["Followers","followers",(user.followers || []).length],
+["Following","following",(user.following || []).length]].map(([l,key,v])=>{
+            const clickable = isOwn && (key==="followers" || key==="following");
+            return (
+            <div key={l} onClick={clickable ? ()=>onOpenConnections?.(key) : undefined} style={{ cursor: clickable ? "pointer" : "default" }}>
               <div style={{ fontWeight:700, fontSize:18, fontFamily:T.body }}>{v}</div>
               <div style={{ fontSize:11, color:C.textMuted, fontFamily:T.body }}>{l}</div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -989,6 +992,93 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
 
       {postsLoaded && userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
       {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit} hideCounts={hideCounts}/>)}
+    </div>
+  );
+}
+// Lets you manage your own followers/following: remove one, a selection,
+// or everyone at once. Reached from tapping the Followers/Following stat
+// on your own profile — `mode` picks which tab opens first.
+function ConnectionsScreen({ cu, users, mode, onBack, onRemove, onToast, onUser }) {
+  const [tab, setTab] = useState(mode === "following" ? "following" : "followers");
+  const [selected, setSelected] = useState([]);
+  const [busy, setBusy] = useState(false);
+
+  const ids = tab === "followers" ? (cu.followers || []) : (cu.following || []);
+  const list = ids.map(id => users.find(u => u.id === id)).filter(Boolean);
+  const allSelected = list.length > 0 && selected.length === list.length;
+
+  const switchTab = (t) => { setTab(t); setSelected([]); };
+  const toggleOne = (id) => setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleAll = () => setSelected(prev => prev.length === list.length ? [] : list.map(u => u.id));
+
+  const removeOne = async (id) => {
+    setBusy(true);
+    const res = await onRemove([id], tab);
+    if (res.ok) {
+      setSelected(prev => prev.filter(x => x !== id));
+      onToast?.({ message: tab === "followers" ? "Follower removed." : "Unfollowed.", type: "success" });
+    }
+    setBusy(false);
+  };
+
+  const removeSelected = async () => {
+    if (selected.length === 0) return;
+    const plural = selected.length === 1 ? "" : "s";
+    const verb = tab === "followers" ? "Remove" : "Unfollow";
+    const noun = tab === "followers" ? `follower${plural}` : `account${plural} you follow`;
+    if (!confirm(`${verb} ${selected.length} ${noun}?`)) return;
+    setBusy(true);
+    const res = await onRemove(selected, tab);
+    if (res.ok) {
+      onToast?.({ message: `${selected.length} ${tab === "followers" ? "follower" : "account"}${plural} removed.`, type: "success" });
+      setSelected([]);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div>
+      <button onClick={onBack} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:14, padding:"0 0 16px", fontFamily:T.body, display:"flex", alignItems:"center", gap:4 }}>← back</button>
+
+      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+        {[["followers","Followers",(cu.followers||[]).length],["following","Following",(cu.following||[]).length]].map(([id,label,count])=>(
+          <button key={id} onClick={()=>switchTab(id)} style={{ flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${tab===id?C.accent:C.border}`, background:tab===id?C.accentLight:C.surface, color:tab===id?C.accent:C.textMuted, fontFamily:T.body, fontWeight:600, fontSize:13, cursor:"pointer" }}>{label} · {count}</button>
+        ))}
+      </div>
+
+      {list.length > 0 && (
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 4px 12px" }}>
+          <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, color:C.textMuted, fontFamily:T.body, cursor:"pointer" }}>
+            <input type="checkbox" checked={allSelected} onChange={toggleAll}/>
+            Select all
+          </label>
+          {selected.length > 0 && (
+            <button onClick={removeSelected} disabled={busy} style={{ background:"#fff5f5", border:"1px solid #f4b8b4", color:"#d63031", borderRadius:20, padding:"6px 16px", fontSize:12, fontWeight:600, fontFamily:T.body, cursor:busy?"default":"pointer", opacity:busy?0.6:1 }}>{tab==="followers"?"Remove":"Unfollow"} {selected.length}</button>
+          )}
+        </div>
+      )}
+
+      {list.length === 0 && (
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>
+          {tab === "followers" ? "No followers yet." : "You're not following anyone yet."}
+        </div>
+      )}
+
+      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        {list.map(u => (
+          <div key={u.id} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px", display:"flex", alignItems:"center", gap:12 }}>
+            <input type="checkbox" checked={selected.includes(u.id)} onChange={()=>toggleOne(u.id)}/>
+            <div onClick={()=>onUser?.(u)} style={{ display:"flex", alignItems:"center", gap:10, flex:1, cursor:"pointer", minWidth:0 }}>
+              <Av user={u} size={40}/>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontWeight:600, fontSize:14, fontFamily:T.body, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.displayName}</div>
+                <div style={{ fontSize:12, color:C.textMuted, fontFamily:T.body }}>@{u.username}</div>
+              </div>
+            </div>
+            <button onClick={()=>removeOne(u.id)} disabled={busy} style={{ background:"none", border:`1px solid ${C.borderStrong}`, color:C.textMuted, borderRadius:20, padding:"6px 14px", fontSize:12, fontFamily:T.body, fontWeight:500, cursor:busy?"default":"pointer", opacity:busy?0.6:1, flexShrink:0 }}>{tab==="followers"?"Remove":"Unfollow"}</button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1668,6 +1758,7 @@ export default function Agora() {
   const [posts, setPosts] = useState([]);
   const [screen, setScreen] = useState("feed");
   const [profileUid, setProfileUid] = useState(null);
+  const [connectionsMode, setConnectionsMode] = useState("followers");
   const [composing, setComposing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
@@ -1815,7 +1906,60 @@ export default function Agora() {
     setToast({ message: "Failed to update follow status. Please try again.", type: "error" });
   }
 };
+// Handles removing one, several, or all connections at once from the
+  // Connections screen. `type` is "followers" (force-remove someone who
+  // follows you — hits the new remove_follower action) or "following"
+  // (the same effect as tapping Unfollow on their profile, just from a
+  // list). Reuses onFollow's optimistic-update-plus-reconcile approach so
+  // both screens stay in sync no matter which one you acted from.
+  const removeConnections = async (uids, type) => {
+    const ids = Array.isArray(uids) ? uids : [uids];
+    if (ids.length === 0) return { ok: true, failedCount: 0 };
+    const action = type === "followers" ? "remove_follower" : "unfollow";
 
+    try {
+      const results = await Promise.all(
+        ids.map(uid => api.post(`/api/follow/${uid}`, { action }, token))
+      );
+      const failedIds = ids.filter((_, i) => results[i]?.error);
+      const succeededIds = ids.filter((_, i) => !results[i]?.error);
+
+      // Optimistic update so removed rows disappear immediately
+      setCu(prev => ({
+        ...prev,
+        followers: type === "followers"
+          ? (prev.followers || []).filter(id => !succeededIds.includes(id))
+          : prev.followers,
+        following: type === "following"
+          ? (prev.following || []).filter(id => !succeededIds.includes(id))
+          : prev.following,
+      }));
+
+      // Reconcile against D1 the same way onFollow does — no /api/me
+      // endpoint, so refresh the full users list and pull ourselves out of it.
+      const freshUsers = await api.get("/api/users", token);
+      if (!freshUsers.error) {
+        setUsers(freshUsers);
+        const freshSelf = freshUsers.find(u => u.id === cu.id);
+        if (freshSelf) {
+          setCu(prev => ({
+            ...prev,
+            following: freshSelf.following || [],
+            followers: freshSelf.followers || []
+          }));
+        }
+      }
+
+      if (failedIds.length) {
+        setToast({ message: `${failedIds.length} of ${ids.length} removals failed. Please try again.`, type: "error" });
+      }
+      return { ok: failedIds.length === 0, failedCount: failedIds.length };
+    } catch (err) {
+      console.log("Remove connections error:", err);
+      setToast({ message: "Failed to update connections. Please try again.", type: "error" });
+      return { ok: false, failedCount: ids.length };
+    }
+  };
   const like = async (pid) => {
     await api.post(`/api/posts/${pid}/like`, {}, token);
     // Optimistic update
@@ -1997,7 +2141,8 @@ export default function Agora() {
           <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={addComment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>
         </>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={onFollow} hideCounts={hideCounts}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={onFollow} onBack={()=>setScreen("feed")} onLike={like} onComment={addComment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} onMergePosts={mergePosts} hideCounts={hideCounts}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={onFollow} onBack={()=>setScreen("feed")} onLike={like} onComment={addComment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} onMergePosts={mergePosts} hideCounts={hideCounts} onOpenConnections={(m)=>{setConnectionsMode(m);setScreen("connections");}}/>}
+        {screen==="connections" && <ConnectionsScreen cu={cu} users={users} mode={connectionsMode} onBack={()=>setScreen("profile")} onRemove={removeConnections} onToast={setToast} onUser={goUser}/>}
         {screen==="admin" && cu.isAdmin && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
         {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} onChangePassword={changePassword} onSetSecurityQuestion={setSecurityQuestion} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
       </div>
