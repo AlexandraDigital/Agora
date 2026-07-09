@@ -655,7 +655,11 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow, hideCounts }) {
                   <div style={{ color:C.textMuted, fontSize:12 }}>@{u.username} · {pc} post{pc!==1?"s":""}</div>
                   {u.bio && <div style={{ fontSize:13, marginTop:2, fontFamily:T.body, color:C.text }}>{u.bio}</div>}
                 </div>
-                <button onClick={e=>{e.stopPropagation();onFollow(u.id);}} style={{ fontSize:12, padding:"5px 14px", borderRadius:20, border:`1px solid ${following?C.borderStrong:C.accent}`, color:following?C.textMuted:C.accent, background:"none", cursor:"pointer", fontFamily:T.body, fontWeight:500, flexShrink:0 }}>{following?"Following":"Follow"}</button>
+                <button
+  onClick={async e=>{
+    e.stopPropagation();
+    await onFollow(u.id);
+  }}style={{ fontSize:12, padding:"5px 14px", borderRadius:20, border:`1px solid ${following?C.borderStrong:C.accent}`, color:following?C.textMuted:C.accent, background:"none", cursor:"pointer", fontFamily:T.body, fontWeight:500, flexShrink:0 }}>{following?"Following":"Follow"}</button>
               </div>
             );
           })}
@@ -937,7 +941,10 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
           </div>
           {!isOwn && (
             <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end", flexShrink:0 }}>
-              <button onClick={()=>onFollow(uid)} style={{ background:following?"none":C.accent, color:following?C.textMuted:"#fff", border:`1px solid ${following?C.borderStrong:C.accent}`, borderRadius:20, padding:"8px 20px", fontSize:13, cursor:"pointer", fontFamily:T.body, fontWeight:500 }}>{following?"Unfollow":"Follow"}</button>
+              <button
+  onClick={async ()=>{
+    await onFollow(uid);
+  }} style={{ background:following?"none":C.accent, color:following?C.textMuted:"#fff", border:`1px solid ${following?C.borderStrong:C.accent}`, borderRadius:20, padding:"8px 20px", fontSize:13, cursor:"pointer", fontFamily:T.body, fontWeight:500 }}>{following?"Unfollow":"Follow"}</button>
               <div style={{ display:"flex", gap:6 }}>
                 <button onClick={toggleMute} disabled={modBusy} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:20, padding:"5px 12px", fontSize:12, cursor:modBusy?"default":"pointer", color:isMuted?"#b01e1e":C.textMuted, fontFamily:T.body, opacity:modBusy?0.6:1 }}>{isMuted?"🔇 Unmute":"🔇 Mute"}</button>
                 <button onClick={toggleBlock} disabled={modBusy} style={{ background:isBlocked?"#fff5f5":"none", border:`1px solid ${isBlocked?"#f4b8b4":C.border}`, borderRadius:20, padding:"5px 12px", fontSize:12, cursor:modBusy?"default":"pointer", color:isBlocked?"#d63031":C.textMuted, fontFamily:T.body, opacity:modBusy?0.6:1 }}>{isBlocked?"🚫 Unblock":"🚫 Block"}</button>
@@ -1763,47 +1770,36 @@ export default function Agora() {
     return true;
   };
 
-  const follow = async (uid) => {
-  const isFollowing = cu.following.includes(uid);
+  const onFollow = async (uid) => {
+  try {
+    const res = await api.post(`/api/users/${uid}/follow`, {}, token);
 
-  const res = await api.post(
-    `/api/follow/${uid}`,
-    {
-      action: isFollowing ? "unfollow" : "follow",
-    },
-    token
-  );
+    if (res.error) {
+      console.log(res.error);
+      return;
+    }
 
-  if (res.error) {
-    setToast({
-      message: res.error || "Couldn't update follow status.",
-      type: "error",
-    });
-    return;
+    // Refresh current user from D1
+    const freshUser = await api.get("/api/me", token);
+
+    if (!freshUser.error) {
+      setCu({
+        ...freshUser,
+        following: freshUser.following || [],
+        followers: freshUser.followers || []
+      });
+    }
+
+    // Refresh users list
+    const freshUsers = await api.get("/api/users", token);
+
+    if (!freshUsers.error) {
+      setUsers(freshUsers);
+    }
+
+  } catch (err) {
+    console.log("Follow error:", err);
   }
-
-  const newCu = {
-    ...cu,
-    following: isFollowing
-      ? cu.following.filter(id => id !== uid)
-      : [...cu.following, uid],
-  };
-
-  setCu(newCu);
-  localStorage.setItem("ag_cu", JSON.stringify(newCu));
-
-  setUsers(prev =>
-    prev.map(u =>
-      u.id === uid
-        ? {
-            ...u,
-            followers: isFollowing
-              ? u.followers.filter(id => id !== cu.id)
-              : [...u.followers, cu.id],
-          }
-        : u
-    )
-  );
 };
 
   const like = async (pid) => {
