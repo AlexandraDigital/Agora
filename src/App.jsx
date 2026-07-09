@@ -645,7 +645,7 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow, hideCounts }) {
       {tab==="people" && (
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
           {others.map(u=>{
-            const following = cu.following.includes(u.id);
+            const following = (cu.following || []).includes(u.id);
             const pc = posts.filter(p=>p.authorId===u.id).length;
             return (
               <div key={u.id} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }} onClick={()=>onUser(u)}>
@@ -863,7 +863,7 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
   const user = users.find(u=>u.id===uid);
   if (!user) return null;
   const isOwn = uid===cu.id;
-  const following = cu.following.includes(uid);
+  const following = (cu.following || []).includes(uid);
   const userPosts = posts.filter(p=>p.authorId===uid).sort((a,b)=>b.timestamp-a.timestamp);
 
   const totalLikes    = userPosts.reduce((s,p) => s + p.likes.length, 0);
@@ -957,7 +957,8 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
         </div>
         {user.bio && <div style={{ fontSize:14, marginTop:14, fontFamily:T.body, lineHeight:1.5, color:C.text }}>{user.bio}</div>}
         <div style={{ display:"flex", gap:24, marginTop:16, borderTop:`1px solid ${C.border}`, paddingTop:14 }}>
-          {[["Posts",userPosts.length],["Followers",user.followers.length],["Following",user.following.length]].map(([l,v])=>(
+          {[["Posts",userPosts.length],["Followers",(user.followers || []).length],
+["Following",(user.following || []).length]].map(([l,v])=>(
             <div key={l}>
               <div style={{ fontWeight:700, fontSize:18, fontFamily:T.body }}>{v}</div>
               <div style={{ fontSize:11, color:C.textMuted, fontFamily:T.body }}>{l}</div>
