@@ -190,7 +190,8 @@ export async function shapeUser(row, db) {
       "SELECT followerId FROM follows WHERE followingId = ?"
     ).bind(row.id).all();
 
-    followers = (followersRes?.results || []).map(r => r.followerId);
+    followers = (followersRes?.results || [])
+      .map(r => String(r.followerId));
   } catch (_) {}
 
   try {
@@ -198,7 +199,8 @@ export async function shapeUser(row, db) {
       "SELECT followingId FROM follows WHERE followerId = ?"
     ).bind(row.id).all();
 
-    following = (followingRes?.results || []).map(r => r.followingId);
+    following = (followingRes?.results || [])
+      .map(r => String(r.followingId));
   } catch (_) {}
 
   let blocked = [];
@@ -209,7 +211,8 @@ export async function shapeUser(row, db) {
       "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action = 'block'"
     ).bind(row.id).all();
 
-    blocked = (blockedRes?.results || []).map(r => r.targetUserId);
+    blocked = (blockedRes?.results || [])
+      .map(r => String(r.targetUserId));
   } catch (_) {}
 
   try {
@@ -217,11 +220,13 @@ export async function shapeUser(row, db) {
       "SELECT targetUserId FROM user_moderation WHERE userId = ? AND action = 'mute'"
     ).bind(row.id).all();
 
-    muted = (mutedRes?.results || []).map(r => r.targetUserId);
+    muted = (mutedRes?.results || [])
+      .map(r => String(r.targetUserId));
   } catch (_) {}
 
   return {
-    id: row.id,
+    id: String(row.id),
+
     username: row.username,
     displayName: row.displayName,
     bio: row.bio,
@@ -236,11 +241,11 @@ export async function shapeUser(row, db) {
     // Never expose secAnswerHash
     secQuestion: row.secQuestion || null,
 
-    followers: followers || [],
-    following: following || [],
-    blocked: blocked || [],
-    muted: muted || [],
+    followers,
+    following,
+    blocked,
+    muted,
 
-    isAdmin: isAdmin(row),
+    isAdmin: Number(row.isAdmin) === 1,
   };
 }
