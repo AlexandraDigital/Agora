@@ -5,6 +5,8 @@ import { DiscussionPrompt } from "./DiscussionPrompt";
 import { generateDiscussionPrompt } from "./discussionPrompts";
 import { useMindfulUse, MindfulUseBanner, MindfulUseSummary } from "./components/MindfulUse";
 
+
+
 const C = {
   bg: "#e6edf2",
   surface: "#f4f8fb",
@@ -113,6 +115,12 @@ const ALLOWED_TYPES = {
   "video/ogg":   { sig: [[0x4F,0x67,0x67,0x53]], ext: ["ogv","ogg"] },
   "video/quicktime": { sig: null, ext: ["mov"] },
 };
+
+const [passwordForm, setPasswordForm] = useState({
+  currentPassword: "",
+  newPassword: "",
+  confirmPassword: ""
+});
 
 // Read the first N bytes of a File as a Uint8Array
 const readHeader = (file, n=12) => new Promise(resolve => {
