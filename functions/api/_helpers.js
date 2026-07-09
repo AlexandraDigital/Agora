@@ -218,23 +218,24 @@ export async function shapeUser(row, db) {
 }
 
 
-return {
-  id: row.id,
-  username: row.username,
-  displayName: row.displayName,
-  bio: row.bio,
-  avatar: row.avatar,
-  avatarColor: row.avatarColor,
-  avatarStyle: row.avatarStyle,
-  avatarImage: row.avatarImage,
-  joinedAt: row.joinedAt,
+export function sanitizeUser(row, followers, following, blocked, muted) {
+  return {
+    id: row.id,
+    username: row.username,
+    displayName: row.displayName,
+    bio: row.bio,
+    avatar: row.avatar,
+    avatarColor: row.avatarColor,
+    avatarStyle: row.avatarStyle,
+    avatarImage: row.avatarImage,
+    joinedAt: row.joinedAt,
+    secQuestion: row.secQuestion || null,
 
-  secQuestion: row.secQuestion || null,
+    followers: followers || [],
+    following: following || [],
+    blocked: blocked || [],
+    muted: muted || [],
 
-  followers: followers || [],
-  following: following || [],
-  blocked: blocked || [],
-  muted: muted || [],
-
-  isAdmin: isAdmin(row),
-};
+    isAdmin: isAdmin(row),
+  };
+}
