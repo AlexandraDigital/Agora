@@ -1786,22 +1786,29 @@ export default function Agora() {
       return;
     }
 
-    // Refresh current user from D1
-    const freshUser = await api.get("/api/me", token);
+    // Optimistic update so the button flips immediately regardless of network timing
+    setCu(prev => ({
+      ...prev,
+      following: action === "follow"
+        ? [...(prev.following || []), uid]
+        : (prev.following || []).filter(id => id !== uid)
+    }));
 
-    if (!freshUser.error) {
-      setCu({
-        ...freshUser,
-        following: freshUser.following || [],
-        followers: freshUser.followers || []
-      });
-    }
-
-    // Refresh users list
+    // Refresh users list from D1. There's no /api/me endpoint in this backend,
+    // so reconcile our own following/followers off this same list instead —
+    // /api/users already runs every row through shapeUser, ourselves included.
     const freshUsers = await api.get("/api/users", token);
 
     if (!freshUsers.error) {
       setUsers(freshUsers);
+      const freshSelf = freshUsers.find(u => u.id === cu.id);
+      if (freshSelf) {
+        setCu(prev => ({
+          ...prev,
+          following: freshSelf.following || [],
+          followers: freshSelf.followers || []
+        }));
+      }
     }
 
   } catch (err) {
@@ -2020,3 +2027,4 @@ export default function Agora() {
     </div>
   );
 }
+
