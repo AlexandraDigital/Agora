@@ -10,26 +10,34 @@ export async function onRequestPost({ request, params, env }) {
     return errResponse("You can't follow yourself", 400);
   }
 
+  // Expect the client to explicitly state the desired end-state to prevent race-condition toggles
+  let action;
   try {
-    const existing = await db.prepare(
-      "SELECT 1 FROM follows WHERE followerId=? AND followingId=?"
-    ).bind(cu.id, targetId).first();
+    const body = await request.json();
+    action = body.action; // "follow" or "unfollow"
+  } catch {
+    return errResponse("Missing or invalid request body", 400);
+  }
 
-    if (existing) {
-      await db.prepare("DELETE FROM follows WHERE followerId=? AND followingId=?").bind(cu.id, targetId).run();
+  if (action !== "follow" && action !== "unfollow") {
+    return errResponse("Invalid action. Must be 'follow' or 'unfollow'", 400);
+  }
+
+  try {
+    if (action === "unfollow") {
+      await db.prepare(
+        "DELETE FROM follows WHERE followerId = ? AND followingId = ?"
+      ).bind(cu.id, targetId).run();
     } else {
-      try {
-        await db.prepare("INSERT INTO follows (followerId,followingId) VALUES (?,?)").bind(cu.id, targetId).run();
-      } catch (e) {
-        // Two taps in quick succession can both pass the SELECT check before
-        // either INSERT commits, so the second one hits the (followerId,
-        // followingId) primary key and throws. The end state both requests
-        // wanted -- a follow row existing -- is already true, so treat this
-        // as success instead of surfacing a 500 to the client.
-        if (!/unique|primary key|constraint/i.test(String(e?.message))) throw e;
-      }
+      // ON CONFLICT DO NOTHING handles simultaneous taps cleanly and deterministically
+      await db.prepare(`
+        INSERT INTO follows (followerId, followingId) 
+        VALUES (?, ?) 
+        ON CONFLICT(followerId, followingId) DO NOTHING
+      `).bind(cu.id, targetId).run();
     }
-    return jsonResponse({ ok: true });
+
+    return jsonResponse({ ok: true, status: action });
   } catch (e) {
     return errResponse("Something went wrong. Please try again.", 500);
   }
