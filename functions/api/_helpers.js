@@ -78,16 +78,32 @@ export async function createSession(db, userId) {
   const token = generateToken();
   const tokenHash = await sha256Hex(token);
   const now = Date.now();
+
   await db.prepare(
     "INSERT INTO sessions (tokenHash, userId, createdAt, expiresAt) VALUES (?,?,?,?)"
   ).bind(tokenHash, userId, now, now + SESSION_TTL_MS).run();
+
   return token;
 }
 
+
 export async function destroySession(db, token) {
   if (!token) return;
+
   const tokenHash = await sha256Hex(token);
-  await db.prepare("DELETE FROM sessions WHERE tokenHash = ?").bind(tokenHash).run();
+
+  await db.prepare(
+    "DELETE FROM sessions WHERE tokenHash = ?"
+  ).bind(tokenHash).run();
+}
+
+
+export async function destroyAllSessions(db, userId) {
+  if (!userId) return;
+
+  await db.prepare(
+    "DELETE FROM sessions WHERE userId = ?"
+  ).bind(userId).run();
 }
 
 export async function verifyAuth(request, db) {
