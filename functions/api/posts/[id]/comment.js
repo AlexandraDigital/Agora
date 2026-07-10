@@ -2,6 +2,7 @@ import { verifyAuth, jsonResponse, errResponse, isBlocked } from "../../_helpers
 
 const MAX_COMMENT_LENGTH = 1000;
 
+// 1. THIS HANDLES CREATING COMMENTS (POST)
 export async function onRequestPost({ request, params, env }) {
   const db = env.DB;
   const cu = await verifyAuth(request, db);
@@ -60,22 +61,24 @@ export async function onRequestPost({ request, params, env }) {
   }, 201);
 }
 
+// 2. THIS HANDLES FETCHING AND RENDERING COMMENTS (GET)
 export async function onRequestGet({ request, params, env }) {
   const db = env.DB;
 
   try {
+    // Only select comments that haven't been soft deleted
     const { results } = await db.prepare(`
       SELECT 
         id, 
         postId, 
-        CAST(authorId AS TEXT) AS authorId, 
+        authorId, 
         text, 
         timestamp, 
         parentCommentId, 
         quotedCommentId, 
         quotedAuthorId
       FROM comments 
-      WHERE postId = ?
+      WHERE postId = ? AND deletedAt IS NULL
       ORDER BY timestamp ASC
     `).bind(params.id).all();
 
@@ -85,3 +88,4 @@ export async function onRequestGet({ request, params, env }) {
     return errResponse("Could not load comments", 500);
   }
 }
+
