@@ -1,6 +1,5 @@
 import { verifyAuth, jsonResponse, errResponse } from "../../_helpers.js";
 
-// Handles preflight browser cross-origin requests cleanly
 export async function onRequestOptions() {
   return new Response(null, {
     status: 204,
@@ -13,7 +12,6 @@ export async function onRequestOptions() {
   });
 }
 
-// Handles the actual POST network method when submitting comment forms
 export async function onRequestPost({ request, params, env }) {
   const db = env.DB;
   const postId = params.id;
@@ -22,27 +20,27 @@ export async function onRequestPost({ request, params, env }) {
   if (!cu) return errResponse("Unauthorized", 401);
 
   try {
-    const { content, parentCommentId } = await request.json();
+    // 🔥 MATCHES YOUR SCHEMA: Read 'text' from the frontend payload
+    const { text, parentCommentId } = await request.json();
     
-    if (!content || !content.trim()) {
-      return errResponse("Comment content cannot be blank.", 400);
+    if (!text || !text.trim()) {
+      return errResponse("Comment text cannot be blank.", 400);
     }
 
     const commentId = crypto.randomUUID();
     const now = Date.now();
 
-    // Inserts details straight into SQLite D1 architecture matching helper schemas
+    // 🔥 MATCHES YOUR SCHEMA: Insert into the 'text' column, not 'content'
     await db.prepare(`
-      INSERT INTO comments (id, postId, authorId, content, parentCommentId, timestamp) 
+      INSERT INTO comments (id, postId, authorId, text, parentCommentId, timestamp) 
       VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(commentId, postId, cu.id, content.trim(), parentCommentId || null, now).run();
+    `).bind(commentId, postId, cu.id, text.trim(), parentCommentId || null, now).run();
 
-    // Returns a packed object payload so frontend state mutations update seamlessly
     return jsonResponse({
       id: commentId,
       postId: postId,
       authorId: cu.id,
-      content: content.trim(),
+      text: text.trim(), // Passes 'text' back cleanly
       parentCommentId: parentCommentId || null,
       timestamp: now,
       username: cu.username,
@@ -56,5 +54,3 @@ export async function onRequestPost({ request, params, env }) {
     return errResponse(e.message || "Database write operation stalled.", 500);
   }
 }
-
-
