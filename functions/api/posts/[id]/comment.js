@@ -7,7 +7,7 @@ export async function onRequestPost({ request, params, env }) {
   const cu = await verifyAuth(request, db);
   if (!cu) return errResponse("Unauthorized", 401);
 
-  const { text } = await request.json();
+  const { text, parentCommentId } = await request.json();
   if (!text?.trim()) return errResponse("Text required", 400);
   if (text.trim().length > MAX_COMMENT_LENGTH) {
     return errResponse(`Comments must be ${MAX_COMMENT_LENGTH} characters or fewer.`, 400);
@@ -20,10 +20,27 @@ export async function onRequestPost({ request, params, env }) {
     if (blocked) return errResponse("Not found", 404);
   }
 
+  // If this is a reply, confirm the parent comment actually belongs to this
+  // post and derive quotedAuthorId server-side — never trust a client value
+  // here, or the "Replying to X" label could be spoofed.
+  let quotedCommentId = null;
+  let quotedAuthorId = null;
+  if (parentCommentId) {
+    const parent = await db.prepare(
+      "SELECT id, authorId FROM comments WHERE id=? AND postId=?"
+    ).bind(parentCommentId, params.id).first();
+    if (!parent) return errResponse("Parent comment not found", 404);
+    quotedCommentId = parent.id;
+    quotedAuthorId = parent.authorId;
+  }
+
   const id = `c_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
   await db.prepare(
-    "INSERT INTO comments (id,postId,authorId,text,timestamp) VALUES (?,?,?,?,?)"
-  ).bind(id, params.id, cu.id, text.trim(), Date.now()).run();
+    "INSERT INTO comments (id,postId,authorId,text,timestamp,parentCommentId,quotedCommentId,quotedAuthorId) VALUES (?,?,?,?,?,?,?,?)"
+  ).bind(id, params.id, cu.id, text.trim(), Date.now(), parentCommentId || null, quotedCommentId, quotedAuthorId).run();
 
-  return jsonResponse({ id, authorId: cu.id, text: text.trim(), timestamp: Date.now() }, 201);
+  return jsonResponse({
+    id, authorId: cu.id, text: text.trim(), timestamp: Date.now(),
+    parentCommentId: parentCommentId || null, quotedCommentId, quotedAuthorId
+  }, 201);
 }
