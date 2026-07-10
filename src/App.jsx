@@ -588,14 +588,12 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
 
 <ThreadedComments 
   postId={post.id} 
-  currentUser={cu} // FIX: Changed from currentUser to cu to match your props
+  currentUser={cu} // Uses the correct 'cu' variable context provided by PostCard props
   users={users} 
   comments={(post.comments || []).map(c => ({ 
     ...c, 
     text: c.text || c.content 
   }))} 
-  
-  // FIX: Uses the correct onComment prop handler passed into PostCard
   onAddComment={async (postId, text, parentCommentId) => {
     const data = await api.post(`/api/posts/${postId}/comments`, { 
       content: text, 
@@ -603,27 +601,25 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
     }, token);
     
     if (!data.error) {
-      if (onComment) onComment(postId, data.comment); // Safely trigger parent refresh handler
+      if (onComment) onComment(postId, data.comment || data); 
     } else {
-      onToast ? onToast(data.error) : alert(data.error);
+      onToast ? onToast({ message: data.error || "Could not publish comment.", type: "error" }) : alert(data.error);
     }
   }}
-  
-  // FIX: Uses the correct onDeleteComment prop handler passed into PostCard
   onDeleteComment={async (postId, commentId) => {
     const data = await api.delete(`/api/posts/${postId}/comments/${commentId}`, token);
     if (!data.error) {
-      if (onDeleteComment) onDeleteComment(postId, commentId); // Safely trigger parent delete handler
+      if (onDeleteComment) onDeleteComment(postId, commentId); 
     } else {
-      onToast ? onToast(data.error) : alert(data.error);
+      onToast ? onToast({ message: data.error || "Could not remove comment.", type: "error" }) : alert(data.error);
     }
   }}
-  
   onUser={(authorId) => {
     const targetUser = users.find(u => u.id === authorId);
     if (targetUser && onUser) onUser(targetUser);
   }} 
-/>  
+/>
+
 </>
       )}
     </div>
