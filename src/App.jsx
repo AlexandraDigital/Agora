@@ -1646,7 +1646,7 @@ function AuthScreen({ onLogin, onSignup, onChangePassword }) {
         </div>
         <div style={{ background:C.surface, borderRadius:16, border:`1px solid ${C.border}`, padding:32 }}>
           <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:24 }}>
-            {[["login","Sign in"],["signup","Sign up"],["changepw","Change password"]].map(([id,label])=>(
+            {[["login","Sign in"],["signup","Sign up"]].map(([id,label])=>(
               <button key={id} onClick={()=>{setMode(id);setErr("");}} style={{ flex:1, background:"none", border:"none", padding:"0 0 12px", fontSize:12, fontWeight:mode===id?600:400, color:mode===id?C.text:C.textMuted, borderBottom:mode===id?`2px solid ${C.accent}`:"2px solid transparent", cursor:"pointer", fontFamily:T.body, marginBottom:-1, lineHeight:1.3 }}>{label}</button>
             ))}
           </div>
