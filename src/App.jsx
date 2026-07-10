@@ -582,7 +582,8 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
           </div>
           <ThreadedComments
             postId={post.id}
-            comments={post.comments || []}
+            comments={post.comments || []} 
+
             users={users}
             currentUser={cu}
             onAddComment={(postId, text, parentCommentId) => {
