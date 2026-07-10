@@ -1,4 +1,4 @@
-import { verifyAuth, jsonResponse, errResponse, isAdmin } from "../../../../_helpers.js";
+import { verifyAuth, jsonResponse, errResponse, isAdmin } from "../../_helpers.js";
 
 export async function onRequestDelete({ request, params, env }) {
   try {
