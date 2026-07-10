@@ -1,4 +1,4 @@
-import { verifyAuth, jsonResponse, errResponse } from "../../../../_helpers.js";
+import { verifyAuth, jsonResponse, errResponse } from "../../../_helpers.js";
 
 // Handles preflight browser cross-origin requests cleanly
 export async function onRequestOptions() {
