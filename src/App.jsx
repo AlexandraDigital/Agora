@@ -1990,10 +1990,14 @@ const doCommentReply = async (pid, text, parentCommentId) => {
   const updateProfile = async (updates) => {
     const res = await api.put(`/api/users/${cu.id}`, updates, token);
     if (res.error) return res;
-    setCu(res);
-    localStorage.setItem("ag_cu", JSON.stringify(res));
-    setUsers(prev => prev.map(u => sameId(u.id, cu.id) ? res : u));
-    return res;
+    // Merge onto the existing cu rather than replacing it outright — if the
+    // server ever responds with a partial user object, a plain setCu(res)
+    // would silently drop fields (e.g. bio) that weren't in this response.
+    const merged = { ...cu, ...res };
+    setCu(merged);
+    localStorage.setItem("ag_cu", JSON.stringify(merged));
+    setUsers(prev => prev.map(u => sameId(u.id, cu.id) ? merged : u));
+    return merged;
   };
 
   const [editingAvatar, setEditingAvatar] = useState(false);
@@ -2009,9 +2013,13 @@ const doCommentReply = async (pid, text, parentCommentId) => {
       let res;
       try { res = JSON.parse(text); } catch { alert("Save failed: " + text); return; }
       if (!raw.ok || res.error) { alert("Save failed: " + (res.error || raw.status)); return; }
-      setCu(res);
-      localStorage.setItem("ag_cu", JSON.stringify(res));
-      setUsers(prev => prev.map(u => u.id === cu.id ? res : u));
+      // Same merge-not-replace fix as updateProfile — this call sends only
+      // avatar fields, so it's the easiest way for bio/displayName to get
+      // wiped out if the response back doesn't happen to include them.
+      const merged = { ...cu, ...res };
+      setCu(merged);
+      localStorage.setItem("ag_cu", JSON.stringify(merged));
+      setUsers(prev => prev.map(u => sameId(u.id, cu.id) ? merged : u));
       setEditingAvatar(false);
     } catch (err) {
       alert("Save error: " + err.message);
