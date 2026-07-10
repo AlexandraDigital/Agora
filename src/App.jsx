@@ -650,7 +650,7 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow, hideCounts }) {
   posts.forEach(p=>parseTags(p.content).forEach(t=>{ tagMap[t]=(tagMap[t]||0)+1; }));
   const hashtags = Object.entries(tagMap).sort((a,b)=>a[0].localeCompare(b[0]));
   const tagPosts = selTag ? posts.filter(p=>p.content.toLowerCase().includes(selTag)).sort((a,b)=>b.timestamp-a.timestamp) : [];
-  const others = users.filter(u=>u.id!==cu.id).sort((a,b)=>a.username.localeCompare(b.username));
+  const others = users.filter(u=>!sameId(u.id, cu.id)).sort((a,b)=>a.username.localeCompare(b.username));
 
   return (
     <div>
@@ -1825,32 +1825,43 @@ const saveSecurityQuestion = async () => {
   const follow = async (uid) => {
     if (sameId(uid, cu.id)) return;
 
-    const res = await api.post(`/api/follow/${uid}`, {}, token);
-    if (res.error) {
-      setToast({ message: res.error, type:"error" });
-      return;
-    }
-
-    const isFollowing = typeof res.following === "boolean" ? res.following : !hasId(cu.following, uid);
-    const newCu = {
-      ...cu,
-      following: isFollowing
-        ? [...cu.following.filter(id=>!sameId(id, uid)), uid]
-        : cu.following.filter(id=>!sameId(id, uid))
-    };
-    setCu(newCu);
-    localStorage.setItem("ag_cu", JSON.stringify(newCu));
-    setUsers(prev => prev.map(u => {
-      if (sameId(u.id, uid)) {
-        return {
-          ...u,
-          followers: isFollowing
-            ? [...u.followers.filter(id=>!sameId(id, cu.id)), cu.id]
-            : u.followers.filter(id=>!sameId(id, cu.id))
-        };
+    try {
+      const res = await api.post(`/api/follow/${uid}`, {}, token);
+      if (res.error) {
+        setToast({ message: res.error, type:"error" });
+        return;
       }
-      return u;
-    }));
+
+      const isFollowing = typeof res.following === "boolean" ? res.following : !hasId(cu.following, uid);
+      // Default to [] — cu.following/u.followers can be missing on a user
+      // object that didn't come from the shaped /api/users list (e.g. a
+      // fresh signup response), and a bare .filter() on undefined here
+      // would throw *after* the follow already succeeded server-side,
+      // leaving the button looking unresponsive with no error shown.
+      const newCu = {
+        ...cu,
+        following: isFollowing
+          ? [...(cu.following || []).filter(id=>!sameId(id, uid)), uid]
+          : (cu.following || []).filter(id=>!sameId(id, uid))
+      };
+      setCu(newCu);
+      localStorage.setItem("ag_cu", JSON.stringify(newCu));
+      setUsers(prev => prev.map(u => {
+        if (sameId(u.id, uid)) {
+          return {
+            ...u,
+            followers: isFollowing
+              ? [...(u.followers || []).filter(id=>!sameId(id, cu.id)), cu.id]
+              : (u.followers || []).filter(id=>!sameId(id, cu.id))
+          };
+        }
+        return u;
+      }));
+    } catch (err) {
+      // The POST may well have already gone through server-side even if
+      // this block throws — say so rather than pretending nothing happened.
+      setToast({ message: "Follow status may not be up to date — refresh to check.", type: "error" });
+    }
   };
 
   const like = async (pid) => {
