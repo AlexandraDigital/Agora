@@ -1867,7 +1867,7 @@ const saveSecurityQuestion = async () => {
 
  const comment = async (pid, text) => {
   // 🔥 FIX: Sends the key name as 'text' to match your SQLite schema column
-  const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId: null }, token);
+  const res = await api.post(`/api/posts/${pid}/comments`, { text, parentCommentId: null }, token);
   if (res.error) return;
 
   setPosts(prev => prev.map(p => {
@@ -1878,7 +1878,7 @@ const saveSecurityQuestion = async () => {
 
 const doCommentReply = async (pid, text, parentCommentId) => {
   // 🔥 FIX: Sends the key name as 'text' to match your SQLite schema column
-  const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId }, token);
+  const res = await api.post(`/api/posts/${pid}/comments`, { text, parentCommentId }, token);
   if (res.error) return;
 
   setPosts(prev => prev.map(p => {
