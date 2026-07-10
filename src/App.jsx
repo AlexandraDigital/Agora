@@ -1589,8 +1589,18 @@ function AuthScreen({ onLogin, onSignup, onChangePassword }) {
   const [un, setUn] = useState(""); const [pw, setPw] = useState("");
   const [dn, setDn] = useState(""); const [bio, setBio] = useState("");
   const [newPw, setNewPw] = useState(""); const [confirmPw, setConfirmPw] = useState("");
+  const [secQuestion, setSecQuestion] = useState(""); const [secAnswer, setSecAnswer] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const securityQuestions = [
+    "What was the name of your first pet?",
+    "What city were you born in?",
+    "What was your childhood nickname?",
+    "What was the model of your first car?",
+    "What elementary school did you attend?",
+  ];
+
   const submit = async () => {
     setErr(""); setBusy(true);
     try {
@@ -1602,7 +1612,8 @@ function AuthScreen({ onLogin, onSignup, onChangePassword }) {
         if(un.length<3){ setErr("Username must be at least 3 characters."); return; }
         if(pw.length<8){ setErr("Password must be at least 8 characters."); return; }
         if(!/^[a-z0-9_]+$/.test(un)){ setErr("Username can only contain letters, numbers, underscores."); return; }
-        const res = await onSignup(un, pw, dn, bio);
+        if(secQuestion && !secAnswer){ setErr("Please provide an answer for your security question."); return; }
+        const res = await onSignup(un, pw, dn, bio, secQuestion, secAnswer);
         if (res !== true) setErr(res || "Username already taken.");
       } else {
         if(!un||!pw||!newPw||!confirmPw){ setErr("Please fill in all fields."); return; }
@@ -1646,6 +1657,8 @@ function AuthScreen({ onLogin, onSignup, onChangePassword }) {
             {mode==="changepw" && <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>New password *</label><input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="Min. 8 characters" style={inp}/></div>}
             {mode==="changepw" && <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Confirm new password *</label><input type="password" value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} style={inp} onKeyDown={e=>e.key==="Enter"&&!busy&&submit()}/></div>}
             {mode==="signup" && <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Bio (optional)</label><input value={bio} onChange={e=>setBio(e.target.value)} placeholder="A few words about you" style={inp}/></div>}
+            {mode==="signup" && <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Security question (optional, for password recovery)</label><select value={secQuestion} onChange={e=>setSecQuestion(e.target.value)} style={inp}><option value="">Choose a question…</option>{securityQuestions.map(q=><option key={q} value={q}>{q}</option>)}</select></div>}
+            {mode==="signup" && secQuestion && <div><label style={{ fontSize:12, color:C.textMuted, display:"block", marginBottom:5, fontFamily:T.body }}>Answer *</label><input value={secAnswer} onChange={e=>setSecAnswer(e.target.value)} placeholder="Your answer" style={inp}/></div>}
             {err && <div style={{ color:C.accent, fontSize:13, fontFamily:T.body }}>{err}</div>}
             <button onClick={submit} disabled={busy} style={{ background:busy?C.border:C.text, color:busy?C.textMuted:"#fff", border:"none", borderRadius:8, padding:"12px 0", fontSize:15, fontWeight:600, cursor:busy?"default":"pointer", fontFamily:T.body, marginTop:4 }}>{busy?"Please wait…":mode==="login"?"Sign in":mode==="signup"?"Create account":"Update password"}</button>
           </div>
@@ -1716,8 +1729,8 @@ export default function Agora() {
     return true;
   };
 
-  const signup = async (un, pw, dn, bio) => {
-    const res = await api.post("/api/signup", { username:un, password:pw, displayName:dn, bio });
+  const signup = async (un, pw, dn, bio, secQuestion, secAnswer) => {
+    const res = await api.post("/api/signup", { username:un, password:pw, displayName:dn, bio, securityQuestion:secQuestion||undefined, securityAnswer:secAnswer||undefined });
     if (res.error) return res.error;
     setCu(res.user); setToken(res.token);
     localStorage.setItem("ag_token", res.token);
