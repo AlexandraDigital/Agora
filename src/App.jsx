@@ -154,6 +154,14 @@ function Toast({ message, type = "error", onClose }) {
     return () => clearTimeout(timer);
   }, [onClose]);
 
+  // Extract string safely if an object payload or a raw message variable string is passed
+  let displayMessage = typeof message === 'object' ? message?.message : message;
+
+  // Prevent the component from rendering an empty red box on screen
+  if (!displayMessage || !String(displayMessage).trim() || displayMessage === "undefined") {
+    return null;
+  }
+
   const bgColor = type === "success" ? C.successLight : "#fdecea";
   const textColor = type === "success" ? C.success : "#9b1c1c";
   const borderColor = type === "success" ? "#b2d8c0" : "#f4b8b4";
@@ -174,10 +182,11 @@ function Toast({ message, type = "error", onClose }) {
       zIndex: 200,
       animation: "fadeIn 0.3s ease-in",
     }}>
-      {message}
+      {displayMessage}
     </div>
   );
 }
+
 
 function RichText({ content, onTag }) {
   const parts = content.split(/(#\w+)/g);
