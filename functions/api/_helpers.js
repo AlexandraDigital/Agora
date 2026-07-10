@@ -20,13 +20,14 @@ export function jsonResponse(data, status = 200) {
     headers: { 
       "Content-Type": "application/json", 
       "X-Content-Type-Options": "nosniff",
-      // 🔥 FIX: Allows your pages.dev frontend to read data without CORS blocking
+      // Allows your frontend pages.dev deployment to request and submit data safely without CORS blocking
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization"
     }, 
   }); 
 }
+
 
 export function errResponse(msg, status = 400) {
   return jsonResponse({ error: msg }, status);
