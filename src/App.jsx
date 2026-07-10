@@ -1866,27 +1866,54 @@ const saveSecurityQuestion = async () => {
   };
 
  const comment = async (pid, text) => {
-  // 🔥 FIX: Sends the key name as 'text' to match your SQLite schema column
-  const res = await api.post(`/api/posts/${pid}/comments`, { text, parentCommentId: null }, token);
+  const res = await api.post(
+    `/api/posts/${pid}/comment`,
+    {
+      text,
+      parentCommentId: null
+    },
+    token
+  );
+
   if (res.error) return;
 
   setPosts(prev => prev.map(p => {
     if (p.id !== pid) return p;
-    return { ...p, comments: [...(p.comments || []), res] };
+
+    return {
+      ...p,
+      comments: [
+        ...(p.comments || []),
+        res
+      ]
+    };
   }));
 };
 
 const doCommentReply = async (pid, text, parentCommentId) => {
-  // 🔥 FIX: Sends the key name as 'text' to match your SQLite schema column
-  const res = await api.post(`/api/posts/${pid}/comments`, { text, parentCommentId }, token);
+  const res = await api.post(
+    `/api/posts/${pid}/comment`,
+    {
+      text,
+      parentCommentId
+    },
+    token
+  );
+
   if (res.error) return;
 
   setPosts(prev => prev.map(p => {
     if (p.id !== pid) return p;
-    return { ...p, comments: [...(p.comments || []), res] };
+
+    return {
+      ...p,
+      comments: [
+        ...(p.comments || []),
+        res
+      ]
+    };
   }));
 };
-
 
 
   const deletePost = async (pid) => {
