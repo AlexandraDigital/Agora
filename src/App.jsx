@@ -395,10 +395,8 @@ function Av({ user, size=36 }) {
 function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, onDelete, onDeleteComment, onUser, onError, onToast, onEdit, hideCounts }) {
   const author = users.find(u=>u.id===post.authorId);
   const [open, setOpen] = useState(false);
-  const [ct, setCt] = useState("");
   const [showMenu, setShowMenu] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [deletingCommentId, setDeletingCommentId] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reporting, setReporting] = useState(false);
