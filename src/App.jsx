@@ -573,25 +573,20 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
       </div>
       {open && (
         <>
-          <div style={{ padding: "0 16px" }}>
-            <DiscussionPrompt
-              postText={post.content}
-              initialPrompt={discussionPrompt}
-              onPromptChange={setDiscussionPrompt}
-            />
-          </div>
-          <ThreadedComments 
-  postId={post.id}
-  currentUser={currentUser}
-  users={users} // 🔥 CRITICAL FIX: Links users list so comments don't return null
-  
-  // 🔥 CRITICAL FIX: Maps database 'content' safely to component 'text'
+          <div style={{ padding: "0 16px" }}> 
+  <DiscussionPrompt postText={post.content} initialPrompt={discussionPrompt} onPromptChange={setDiscussionPrompt} /> 
+</div> 
+
+<ThreadedComments 
+  postId={post.id} 
+  currentUser={cu} // FIX: Changed from currentUser to cu to match your props
+  users={users} 
   comments={(post.comments || []).map(c => ({ 
     ...c, 
     text: c.text || c.content 
   }))} 
   
-  // Connects interactive click event handlers to your backend routines
+  // FIX: Uses the correct onComment prop handler passed into PostCard
   onAddComment={async (postId, text, parentCommentId) => {
     const data = await api.post(`/api/posts/${postId}/comments`, { 
       content: text, 
@@ -599,29 +594,28 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
     }, token);
     
     if (!data.error) {
-      // Re-load user context or posts feed state to refresh instantly
-      loadUserContext(); 
+      if (onComment) onComment(postId, data.comment); // Safely trigger parent refresh handler
     } else {
-      setToast({ message: data.error, type: "error" });
+      onToast ? onToast(data.error) : alert(data.error);
     }
   }}
   
+  // FIX: Uses the correct onDeleteComment prop handler passed into PostCard
   onDeleteComment={async (postId, commentId) => {
     const data = await api.delete(`/api/posts/${postId}/comments/${commentId}`, token);
     if (!data.error) {
-      loadUserContext();
+      if (onDeleteComment) onDeleteComment(postId, commentId); // Safely trigger parent delete handler
     } else {
-      setToast({ message: data.error, type: "error" });
+      onToast ? onToast(data.error) : alert(data.error);
     }
   }}
   
   onUser={(authorId) => {
-    // Optional: Switch view to see their profile if clicked
-    setView("explore"); 
-  }}
-/>
-
-        </>
+    const targetUser = users.find(u => u.id === authorId);
+    if (targetUser && onUser) onUser(targetUser);
+  }} 
+/>  
+</>
       )}
     </div>
   );
