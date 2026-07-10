@@ -1870,22 +1870,27 @@ const saveSecurityQuestion = async () => {
   };
 
   const comment = async (pid, text) => {
-    const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId: null }, token);
-    if (res.error) return;
-    setPosts(prev => prev.map(p => {
-      if (p.id !== pid) return p;
-      return { ...p, comments: [...p.comments, res] };
-    }));
-  };
+  // Aligned parameter key name from 'text' to 'content' to match backend schema updates
+  const res = await api.post(`/api/posts/${pid}/comment`, { content: text, parentCommentId: null }, token);
+  if (res.error) return;
 
-  const doCommentReply = async (pid, text, parentCommentId) => {
-    const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId }, token);
-    if (res.error) return;
-    setPosts(prev => prev.map(p => {
-      if (p.id !== pid) return p;
-      return { ...p, comments: [...p.comments, res] };
-    }));
-  };
+  setPosts(prev => prev.map(p => {
+    if (p.id !== pid) return p;
+    return { ...p, comments: [...(p.comments || []), res] };
+  }));
+};
+
+const doCommentReply = async (pid, text, parentCommentId) => {
+  // Aligned parameter key name from 'text' to 'content' to match backend schema updates
+  const res = await api.post(`/api/posts/${pid}/comment`, { content: text, parentCommentId }, token);
+  if (res.error) return;
+
+  setPosts(prev => prev.map(p => {
+    if (p.id !== pid) return p;
+    return { ...p, comments: [...(p.comments || []), res] };
+  }));
+};
+
 
   const deletePost = async (pid) => {
     const originalPosts = posts;
