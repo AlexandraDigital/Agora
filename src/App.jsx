@@ -580,25 +580,47 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
               onPromptChange={setDiscussionPrompt}
             />
           </div>
-          <ThreadedComments
-            postId={post.id}
-            comments={post.comments || []} 
+          <ThreadedComments 
+  postId={post.id}
+  currentUser={currentUser}
+  users={users} // 🔥 CRITICAL FIX: Links users list so comments don't return null
+  
+  // 🔥 CRITICAL FIX: Maps database 'content' safely to component 'text'
+  comments={(post.comments || []).map(c => ({ 
+    ...c, 
+    text: c.text || c.content 
+  }))} 
+  
+  // Connects interactive click event handlers to your backend routines
+  onAddComment={async (postId, text, parentCommentId) => {
+    const data = await api.post(`/api/posts/${postId}/comments`, { 
+      content: text, 
+      parentCommentId 
+    }, token);
+    
+    if (!data.error) {
+      // Re-load user context or posts feed state to refresh instantly
+      loadUserContext(); 
+    } else {
+      setToast({ message: data.error, type: "error" });
+    }
+  }}
+  
+  onDeleteComment={async (postId, commentId) => {
+    const data = await api.delete(`/api/posts/${postId}/comments/${commentId}`, token);
+    if (!data.error) {
+      loadUserContext();
+    } else {
+      setToast({ message: data.error, type: "error" });
+    }
+  }}
+  
+  onUser={(authorId) => {
+    // Optional: Switch view to see their profile if clicked
+    setView("explore"); 
+  }}
+/>
 
-            users={users}
-            currentUser={cu}
-            onAddComment={(postId, text, parentCommentId) => {
-              if (parentCommentId) {
-                // Reply to a comment
-                onCommentReply?.(postId, text, parentCommentId);
-              } else {
-                // Top-level comment
-                setCt(text);
-                doComment();
-              }
-            }}
-            onDeleteComment={handleDeleteComment}
-            onUser={onUser}
-          />
         </>
       )}
     </div>
