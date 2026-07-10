@@ -5,6 +5,14 @@ import { DiscussionPrompt } from "./DiscussionPrompt";
 import { generateDiscussionPrompt } from "./discussionPrompts";
 import { useMindfulUse, MindfulUseBanner, MindfulUseSummary } from "./components/MindfulUse";
 
+function App(){
+
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+}
 
 
 const C = {
@@ -28,9 +36,6 @@ const T = {
   mono: "'Courier New', Courier, monospace",
 };
 
-// ── API config ───────────────────────────────────────────────────
-// In development: set VITE_API_URL in a .env.local file.
-// In production:  set VITE_API_URL in Cloudflare Pages environment variables.
 const API = "";
 
 const authHeaders = (token) => ({
@@ -116,11 +121,7 @@ const ALLOWED_TYPES = {
   "video/quicktime": { sig: null, ext: ["mov"] },
 };
 
-const [passwordForm, setPasswordForm] = useState({
-  currentPassword: "",
-  newPassword: "",
-  confirmPassword: ""
-});
+
 
 // Read the first N bytes of a File as a Uint8Array
 const readHeader = (file, n=12) => new Promise(resolve => {
