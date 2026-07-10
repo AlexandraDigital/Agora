@@ -14,14 +14,18 @@ export const AVATAR_COLORS = [
 // How long a login session stays valid before the user must sign in again.
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
-export function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "X-Content-Type-Options": "nosniff"
-    },
-  });
+export function jsonResponse(data, status = 200) { 
+  return new Response(JSON.stringify(data), { 
+    status, 
+    headers: { 
+      "Content-Type": "application/json", 
+      "X-Content-Type-Options": "nosniff",
+      // 🔥 FIX: Allows your pages.dev frontend to read data without CORS blocking
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization"
+    }, 
+  }); 
 }
 
 export function errResponse(msg, status = 400) {
