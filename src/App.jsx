@@ -1865,9 +1865,9 @@ const saveSecurityQuestion = async () => {
     }));
   };
 
-  const comment = async (pid, text) => {
-  // Aligned parameter key name from 'text' to 'content' to match backend schema updates
-  const res = await api.post(`/api/posts/${pid}/comment`, { content: text, parentCommentId: null }, token);
+ const comment = async (pid, text) => {
+  // 🔥 FIX: Sends the key name as 'text' to match your SQLite schema column
+  const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId: null }, token);
   if (res.error) return;
 
   setPosts(prev => prev.map(p => {
@@ -1877,8 +1877,8 @@ const saveSecurityQuestion = async () => {
 };
 
 const doCommentReply = async (pid, text, parentCommentId) => {
-  // Aligned parameter key name from 'text' to 'content' to match backend schema updates
-  const res = await api.post(`/api/posts/${pid}/comment`, { content: text, parentCommentId }, token);
+  // 🔥 FIX: Sends the key name as 'text' to match your SQLite schema column
+  const res = await api.post(`/api/posts/${pid}/comment`, { text, parentCommentId }, token);
   if (res.error) return;
 
   setPosts(prev => prev.map(p => {
@@ -1886,6 +1886,7 @@ const doCommentReply = async (pid, text, parentCommentId) => {
     return { ...p, comments: [...(p.comments || []), res] };
   }));
 };
+
 
 
   const deletePost = async (pid) => {
