@@ -5,16 +5,6 @@ import { DiscussionPrompt } from "./DiscussionPrompt";
 import { generateDiscussionPrompt } from "./discussionPrompts";
 import { useMindfulUse, MindfulUseBanner, MindfulUseSummary } from "./components/MindfulUse";
 
-function App(){
-
-  const [passwordForm, setPasswordForm] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  });
-}
-
-
 const C = {
   bg: "#e6edf2",
   surface: "#f4f8fb",
@@ -168,12 +158,6 @@ function Toast({ message, type = "error", onClose }) {
   const textColor = type === "success" ? C.success : "#9b1c1c";
   const borderColor = type === "success" ? "#b2d8c0" : "#f4b8b4";
 
- const [passwordForm, setPasswordForm] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: ""
-  });
-  
   return (
     <div style={{
       position: "fixed",
@@ -399,7 +383,7 @@ function Av({ user, size=36 }) {
   );
 }
 
-function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast, onEdit, hideCounts }) {
+function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, onDelete, onDeleteComment, onUser, onError, onToast, onEdit, hideCounts }) {
   const author = users.find(u=>u.id===post.authorId);
   const [open, setOpen] = useState(false);
   const [ct, setCt] = useState("");
@@ -604,7 +588,7 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
             onAddComment={(postId, text, parentCommentId) => {
               if (parentCommentId) {
                 // Reply to a comment
-                doCommentReply(postId, text, parentCommentId);
+                onCommentReply?.(postId, text, parentCommentId);
               } else {
                 // Top-level comment
                 setCt(text);
@@ -620,8 +604,8 @@ function PostCard({ post, users, cu, token, onLike, onComment, onDelete, onDelet
   );
 }
 
-function FeedScreen({ posts, users, cu, token, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onToast, onEdit, hideCounts }) {
-  const feed = posts.filter(p=>cu.following.includes(p.authorId)||p.authorId===cu.id).sort((a,b)=>b.timestamp-a.timestamp);
+function FeedScreen({ posts, users, cu, token, onLike, onComment, onCommentReply, onDelete, onDeleteComment, onUser, onError, onToast, onEdit, hideCounts }) {
+  const feed = posts.filter(p=>hasId(cu.following, p.authorId)||sameId(p.authorId, cu.id)).sort((a,b)=>b.timestamp-a.timestamp);
   return (
     <div>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
@@ -634,7 +618,7 @@ function FeedScreen({ posts, users, cu, token, onLike, onComment, onDelete, onDe
           <div style={{ fontSize:16, fontWeight:600, marginBottom:8, fontFamily:T.body }}>Your feed is empty</div>
           <div style={{ fontSize:14, color:C.textMuted, fontFamily:T.body }}>Follow people from Explore to see their posts here.</div>
         </div>
-      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit} hideCounts={hideCounts}/>)}
+      ) : feed.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onCommentReply={onCommentReply} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit} hideCounts={hideCounts}/>)}
     </div>
   );
 }
@@ -869,17 +853,73 @@ function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
 }
 
 
-function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike, onComment, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onToast, onEdit, hideCounts }) {
+function ProfileScreen({ uid, users, cu, token, onFollow, onBack, onLike, onComment, onCommentReply, onDelete, onDeleteComment, onUser, onError, onEditAvatar, onToast, onEdit, hideCounts }) {
   const user = users.find(u=>sameId(u.id, uid));
-  if (!user) return null;
   const isOwn = sameId(uid, cu.id);
   const following = hasId(cu.following, uid);
-  const userPosts = posts.filter(p=>sameId(p.authorId, uid)).sort((a,b)=>b.timestamp-a.timestamp);
+
+  const [userPosts, setUserPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPostsLoading(true);
+    api.get(`/api/posts?userId=${uid}`, token).then(res => {
+      if (cancelled) return;
+      setUserPosts(Array.isArray(res) ? res.sort((a,b)=>b.timestamp-a.timestamp) : []);
+      setPostsLoading(false);
+    }).catch(() => { if (!cancelled) setPostsLoading(false); });
+    return () => { cancelled = true; };
+  }, [uid, token]);
+
+  if (!user) return null;
 
   const totalLikes    = userPosts.reduce((s,p) => s + p.likes.length, 0);
   const totalComments = userPosts.reduce((s,p) => s + p.comments.length, 0);
   const topPost       = userPosts.slice().sort((a,b) => b.likes.length - a.likes.length)[0];
   const joinDate      = user.joinedAt ? new Date(user.joinedAt).toLocaleDateString("en-US",{month:"short",year:"numeric"}) : null;
+
+  // ProfileScreen now fetches its own posts (see effect above) rather than
+  // filtering the app-wide feed-scoped posts array, so it also needs to
+  // mirror the same local-state effect the parent's handlers apply to
+  // *their* copy. The actual API call still happens once, in the parent.
+  const handleLike = (pid) => {
+    onLike(pid);
+    setUserPosts(prev => prev.map(p => {
+      if (!sameId(p.id, pid)) return p;
+      const liked = hasId(p.likes, cu.id);
+      return { ...p, likes: liked ? p.likes.filter(id=>!sameId(id,cu.id)) : [...p.likes, cu.id] };
+    }));
+  };
+  const handleComment = async (pid, text) => {
+    await onComment(pid, text);
+    api.get(`/api/posts?userId=${uid}`, token).then(res => {
+      if (Array.isArray(res)) setUserPosts(res.sort((a,b)=>b.timestamp-a.timestamp));
+    }).catch(()=>{});
+  };
+  const handleCommentReply = async (pid, text, parentCommentId) => {
+    await onCommentReply?.(pid, text, parentCommentId);
+    api.get(`/api/posts?userId=${uid}`, token).then(res => {
+      if (Array.isArray(res)) setUserPosts(res.sort((a,b)=>b.timestamp-a.timestamp));
+    }).catch(()=>{});
+  };
+  const handleDelete = async (pid) => {
+    const original = userPosts;
+    setUserPosts(prev => prev.filter(p => !sameId(p.id, pid)));
+    await onDelete(pid);
+    // no re-fetch needed on success; if the delete actually failed, the
+    // parent's own toast will fire — but resync defensively just in case
+    api.get(`/api/posts?userId=${uid}`, token).then(res => {
+      if (Array.isArray(res)) setUserPosts(res.sort((a,b)=>b.timestamp-a.timestamp));
+    }).catch(()=>setUserPosts(original));
+  };
+  const handleDeleteComment = async (pid, cid) => {
+    setUserPosts(prev => prev.map(p => {
+      if (!sameId(p.id, pid)) return p;
+      return { ...p, comments: p.comments.filter(c => !sameId(c.id, cid)) };
+    }));
+    await onDeleteComment(pid, cid);
+  };
 
   const [isBlocked, setIsBlocked] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -976,13 +1016,14 @@ function ProfileScreen({ uid, users, posts, cu, token, onFollow, onBack, onLike,
         </div>
       )}
 
-      {userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
-      {userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit} hideCounts={hideCounts}/>)}
+      {postsLoading && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>Loading posts…</div>}
+      {!postsLoading && userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
+      {!postsLoading && userPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={handleLike} onComment={handleComment} onCommentReply={handleCommentReply} onDelete={handleDelete} onDeleteComment={handleDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit} hideCounts={hideCounts}/>)}
     </div>
   );
 }
 
-function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCounts, onToggleHideCounts, todayMinutes, todaySessions }) {
+function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, onToast, hideCounts, onToggleHideCounts, todayMinutes, todaySessions }) {
   const [dn, setDn] = useState(cu.displayName);
   const [bio, setBio] = useState(cu.bio||"");
   const [saved, setSaved] = useState(false);
@@ -990,6 +1031,20 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCoun
   const [mutedUsers, setMutedUsers] = useState([]);
   const [loadingLists, setLoadingLists] = useState(true);
   const [actionBusy, setActionBusy] = useState(null);
+
+  const securityQuestions = [
+    "What was the name of your first pet?",
+    "What city were you born in?",
+    "What was your childhood nickname?",
+    "What was the model of your first car?",
+    "What elementary school did you attend?",
+  ];
+
+  const [passwordForm, setPasswordForm] = useState({ currentPassword:"", newPassword:"", confirmPassword:"" });
+  const [pwBusy, setPwBusy] = useState(false);
+
+  const [securityForm, setSecurityForm] = useState({ currentPassword:"", question:"", answer:"" });
+  const [secBusy, setSecBusy] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -1008,7 +1063,71 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCoun
     load();
   }, [token]);
 
-  const save = () => { onUpdate({ displayName:dn, bio }); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const save = async () => {
+    try {
+      const res = await onUpdate({ displayName:dn, bio });
+      if (res && res.error) { onToast?.({ message: res.error, type: "error" }); return; }
+      setSaved(true); setTimeout(()=>setSaved(false),2000);
+    } catch(_) {
+      onToast?.({ message: "Couldn't save changes. Please try again.", type: "error" });
+    }
+  };
+
+  const changePassword = async () => {
+    if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+      onToast?.({ message: "Fill in both password fields.", type: "error" }); return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      onToast?.({ message: "New passwords don't match.", type: "error" }); return;
+    }
+    setPwBusy(true);
+    try {
+      const res = await fetch("/api/change-password", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        onToast?.({ message: data.error || "Couldn't update password.", type: "error" });
+      } else {
+        onToast?.({ message: "Password updated. Please sign in again.", type: "success" });
+        setPasswordForm({ currentPassword:"", newPassword:"", confirmPassword:"" });
+        onLogout();
+      }
+    } catch(_) {
+      onToast?.({ message: "Couldn't update password. Please try again.", type: "error" });
+    }
+    setPwBusy(false);
+  };
+
+  const saveSecurityQuestion = async () => {
+    if (!securityForm.currentPassword || !securityForm.question || !securityForm.answer) {
+      onToast?.({ message: "Fill in your password, a question, and an answer.", type: "error" }); return;
+    }
+    setSecBusy(true);
+    try {
+      const res = await fetch("/api/security-question", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token}` },
+        body: JSON.stringify({
+          currentPassword: securityForm.currentPassword,
+          securityQuestion: securityForm.question,
+          securityAnswer: securityForm.answer
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        onToast?.({ message: data.error || "Couldn't save security question.", type: "error" });
+      } else {
+        onToast?.({ message: "Security question saved.", type: "success" });
+        setSecurityForm({ currentPassword:"", question:"", answer:"" });
+      }
+    } catch(_) {
+      onToast?.({ message: "Couldn't save security question. Please try again.", type: "error" });
+    }
+    setSecBusy(false);
+  };
 
   const unblock = async (uid) => {
     setActionBusy(`unblock-${uid}`);
@@ -1036,111 +1155,6 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCoun
     ["No Popularity Ranking. Posts are never boosted based on likes or click counts"],
     ["Data Never Sold. Your information is secure and never shared for marketing"],
   ];
-<div className="security-card">
-
-  <h2>Change password</h2>
-
-  <input
-    type="password"
-    placeholder="Current password"
-    value={passwordForm.currentPassword}
-    onChange={e =>
-      setPasswordForm({
-        ...passwordForm,
-        currentPassword: e.target.value
-      })
-    }
-  />
-
-  <input
-    type="password"
-    placeholder="New password (Min. 8 characters)"
-    value={passwordForm.newPassword}
-    onChange={e =>
-      setPasswordForm({
-        ...passwordForm,
-        newPassword: e.target.value
-      })
-    }
-  />
-
-  <input
-    type="password"
-    placeholder="Confirm new password"
-    value={passwordForm.confirmPassword}
-    onChange={e =>
-      setPasswordForm({
-        ...passwordForm,
-        confirmPassword: e.target.value
-      })
-    }
-  />
-
-  <button onClick={changePassword}>
-    Update password
-  </button>
-
-
-  <hr />
-
-
-  <h2>Security question</h2>
-
-  <p>
-    Used to reset your password if you forget it.
-    Setting a new one below replaces it.
-  </p>
-
-  <input
-    type="password"
-    placeholder="Current password"
-    value={securityForm.currentPassword}
-    onChange={e =>
-      setSecurityForm({
-        ...securityForm,
-        currentPassword: e.target.value
-      })
-    }
-  />
-
-
-  <select
-    value={securityForm.question}
-    onChange={e =>
-      setSecurityForm({
-        ...securityForm,
-        question: e.target.value
-      })
-    }
-  >
-    <option value="">
-      Security question
-    </option>
-
-    {securityQuestions.map(q => (
-      <option key={q}>
-        {q}
-      </option>
-    ))}
-  </select>
-
-
-  <input
-    placeholder="Answer"
-    value={securityForm.answer}
-    onChange={e =>
-      setSecurityForm({
-        ...securityForm,
-        answer: e.target.value
-      })
-    }
-  />
-
-  <button onClick={saveSecurityQuestion}>
-    Save security question
-  </button>
-
-</div>
   const listCard = (title, emoji, items, onAction, actionLabel, busyPrefix) => (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20, marginBottom:16 }}>
       <div style={{ fontWeight:600, fontSize:15, marginBottom:12, fontFamily:T.body }}>{emoji} {title}</div>
@@ -1186,6 +1200,40 @@ function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, hideCoun
           <button onClick={onToggleHideCounts} style={{ background:hideCounts?C.success:"none", color:hideCounts?"#fff":C.textMuted, border:`1px solid ${hideCounts?C.success:C.border}`, borderRadius:20, padding:"6px 16px", fontSize:12, cursor:"pointer", fontFamily:T.body, flexShrink:0 }}>{hideCounts?"On":"Off"}</button>
         </div>
         <MindfulUseSummary todayMinutes={todayMinutes} todaySessions={todaySessions} />
+      </div>
+
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
+        <div style={{ fontWeight:600, fontSize:16, marginBottom:14, fontFamily:T.body }}>Change password</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          <input type="password" placeholder="Current password" value={passwordForm.currentPassword}
+            onChange={e=>setPasswordForm({ ...passwordForm, currentPassword:e.target.value })} style={inp}/>
+          <input type="password" placeholder="New password (min. 8 characters)" value={passwordForm.newPassword}
+            onChange={e=>setPasswordForm({ ...passwordForm, newPassword:e.target.value })} style={inp}/>
+          <input type="password" placeholder="Confirm new password" value={passwordForm.confirmPassword}
+            onChange={e=>setPasswordForm({ ...passwordForm, confirmPassword:e.target.value })} style={inp}/>
+          <button onClick={changePassword} disabled={pwBusy} style={{ background:C.text, color:"#fff", border:"none", borderRadius:8, padding:"10px 0", fontSize:14, cursor:"pointer", fontFamily:T.body, opacity:pwBusy?0.6:1 }}>
+            {pwBusy ? "Updating…" : "Update password"}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
+        <div style={{ fontWeight:600, fontSize:16, marginBottom:6, fontFamily:T.body }}>Security question</div>
+        <div style={{ fontSize:12, color:C.textMuted, fontFamily:T.body, marginBottom:14 }}>Used to reset your password if you forget it. Setting a new one below replaces it.</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          <input type="password" placeholder="Current password" value={securityForm.currentPassword}
+            onChange={e=>setSecurityForm({ ...securityForm, currentPassword:e.target.value })} style={inp}/>
+          <select value={securityForm.question}
+            onChange={e=>setSecurityForm({ ...securityForm, question:e.target.value })} style={inp}>
+            <option value="">Security question</option>
+            {securityQuestions.map(q=><option key={q} value={q}>{q}</option>)}
+          </select>
+          <input placeholder="Answer" value={securityForm.answer}
+            onChange={e=>setSecurityForm({ ...securityForm, answer:e.target.value })} style={inp}/>
+          <button onClick={saveSecurityQuestion} disabled={secBusy} style={{ background:C.text, color:"#fff", border:"none", borderRadius:8, padding:"10px 0", fontSize:14, cursor:"pointer", fontFamily:T.body, opacity:secBusy?0.6:1 }}>
+            {secBusy ? "Saving…" : "Save security question"}
+          </button>
+        </div>
       </div>
 
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
@@ -1875,10 +1923,11 @@ const saveSecurityQuestion = async () => {
 
   const updateProfile = async (updates) => {
     const res = await api.put(`/api/users/${cu.id}`, updates, token);
-    if (res.error) return;
+    if (res.error) return res;
     setCu(res);
     localStorage.setItem("ag_cu", JSON.stringify(res));
-    setUsers(prev => prev.map(u => u.id === cu.id ? res : u));
+    setUsers(prev => prev.map(u => sameId(u.id, cu.id) ? res : u));
+    return res;
   };
 
   const [editingAvatar, setEditingAvatar] = useState(false);
@@ -1944,12 +1993,12 @@ const saveSecurityQuestion = async () => {
         {mindful.showBreakNudge && <MindfulUseBanner sessionMinutes={mindful.sessionMinutes} onDismiss={mindful.dismissNudge} />}
         {screen==="feed" && <>
           <PWAInstallButton />
-          <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>
+          <FeedScreen posts={posts} users={users} cu={cu} token={token} onLike={like} onComment={comment} onCommentReply={doCommentReply} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>
         </>}
         {screen==="explore" && <ExploreScreen posts={posts} users={users} cu={cu} onUser={goUser} onFollow={follow} hideCounts={hideCounts}/>}
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} posts={posts} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>}
+        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onCommentReply={doCommentReply} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>}
         {screen==="admin" && cu.isAdmin && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
-        {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
+        {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} onToast={setToast} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
       </div>
 
       <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.surface, borderTop:`1px solid ${C.border}`, display:"flex", padding:"8px 0 18px", zIndex:50 }}>
