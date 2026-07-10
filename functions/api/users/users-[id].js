@@ -2,13 +2,19 @@ import { shapeUser, jsonResponse, errResponse, verifyAuth, isBlocked } from "../
 
 export async function onRequestGet({ request, params, env }) {
   const db = env.DB;
-  const row = await db.prepare("SELECT * FROM users WHERE id = ?").bind(params.id).first();
+
+  // Normalize the route param once — D1's `id` column is an integer,
+  // but params.id always arrives as a string from the URL.
+  const targetId = Number(params.id);
+  if (!Number.isInteger(targetId)) return errResponse("Invalid user id", 400);
+
+  const row = await db.prepare("SELECT * FROM users WHERE id = ?").bind(targetId).first();
   if (!row) return errResponse("User not found", 404);
 
   // Check if requesting user is blocked
   const cu = await verifyAuth(request, db);
-  if (cu && String(cu.id) !== String(params.id)) {
-    const blocked = await isBlocked(db, cu.id, params.id);
+  if (cu && Number(cu.id) !== targetId) {
+    const blocked = await isBlocked(db, cu.id, targetId);
     if (blocked) return errResponse("User not found", 404);
   }
 
@@ -18,9 +24,18 @@ export async function onRequestGet({ request, params, env }) {
 export async function onRequestPut({ request, params, env }) {
   try {
     const db = env.DB;
+
+    const targetId = Number(params.id);
+    if (!Number.isInteger(targetId)) return errResponse("Invalid user id", 400);
+
     const cu = await verifyAuth(request, db);
     if (!cu) return errResponse("Unauthorized", 401);
-    if (String(cu.id) !== String(params.id)) return errResponse("Forbidden", 403);
+
+    // cu.id and targetId are both normalized to Number here, so this
+    // comparison is type-safe regardless of what shape verifyAuth returns.
+    if (Number(cu.id) !== targetId) {
+      return errResponse("Forbidden", 403);
+    }
 
     const body = await request.json();
     const { displayName, bio, avatar, avatarColor, avatarStyle, avatarImage } = body;
@@ -43,10 +58,10 @@ export async function onRequestPut({ request, params, env }) {
       avatarColor ?? cu.avatarColor,
       avatarStyle ?? cu.avatarStyle,
       avatarImage ?? cu.avatarImage,
-      cu.id
+      targetId
     ).run();
 
-    const updated = await db.prepare("SELECT * FROM users WHERE id=?").bind(cu.id).first();
+    const updated = await db.prepare("SELECT * FROM users WHERE id=?").bind(targetId).first();
     return jsonResponse(await shapeUser(updated, db));
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message, stack: err.stack }), {
