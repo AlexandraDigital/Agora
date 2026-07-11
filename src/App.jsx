@@ -984,13 +984,7 @@ function ProfileScreen({ uid, users, cu, token, onFollow, onBack, onLike, onComm
 
   return (
     <div>
-      <button 
-        onClick={onBack} 
-        style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:14, padding:"0 0 16px", fontFamily:T.body, display:"flex", alignItems:"center", gap:4 }}
-      >
-        ← back
-      </button>
-
+      <button onClick={onBack} style={{ background:"none", border:"none", cursor:"pointer", color:C.textMuted, fontSize:14, padding:"0 0 16px", fontFamily:T.body, display:"flex", alignItems:"center", gap:4 }}>← back</button>
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:16 }}>
         <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12 }}>
           <div style={{ display:"flex", gap:14, alignItems:"center" }}>
@@ -1001,53 +995,50 @@ function ProfileScreen({ uid, users, cu, token, onFollow, onBack, onLike, onComm
               {joinDate && <div style={{ color:C.textMuted, fontSize:12, marginTop:2, fontFamily:T.body }}>Joined {joinDate}</div>}
             </div>
           </div>
-
           {!isOwn && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end", flexShrink: 0 }}>
-              <button 
-                onClick={(e) => { e.stopPropagation(); onFollow(user.id); }} 
-                style={{ fontSize: 12, padding: "5px 14px", borderRadius: 20, border: `1px solid ${following ? C.borderStrong : C.accent}`, color: following ? C.textMuted : C.accent, background: "none", cursor: "pointer", fontFamily: T.body, fontWeight: 500, flexShrink: 0 }}
-              >
-                {following ? "Unfollow" : "Follow"}
-              </button>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={toggleMute} disabled={modBusy} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, cursor: modBusy ? "default" : "pointer", color: isMuted ? "#b01e1e" : C.textMuted, fontFamily: T.body, opacity: modBusy ? 0.6 : 1 }}>{isMuted ? "🔇 Unmute" : "🔇 Mute"}</button>
-                <button onClick={toggleBlock} disabled={modBusy} style={{ background: isBlocked ? "#fff5f5" : "none", border: `1px solid ${isBlocked ? "#f4b8b4" : C.border}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, cursor: modBusy ? "default" : "pointer", color: isBlocked ? "#d63031" : C.textMuted, fontFamily: T.body, opacity: modBusy ? 0.6 : 1 }}>{isBlocked ? "🚫 Unblock" : "🚫 Block"}</button>
+            <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end", flexShrink:0 }}>
+              <button onClick={()=>onFollow(uid)} style={{ background:following?"none":C.accent, color:following?C.textMuted:"#fff", border:`1px solid ${following?C.borderStrong:C.accent}`, borderRadius:20, padding:"8px 20px", fontSize:13, cursor:"pointer", fontFamily:T.body, fontWeight:500 }}>{following?"Unfollow":"Follow"}</button>
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={toggleMute} disabled={modBusy} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:20, padding:"5px 12px", fontSize:12, cursor:modBusy?"default":"pointer", color:isMuted?"#b01e1e":C.textMuted, fontFamily:T.body, opacity:modBusy?0.6:1 }}>{isMuted?"🔇 Unmute":"🔇 Mute"}</button>
+                <button onClick={toggleBlock} disabled={modBusy} style={{ background:isBlocked?"#fff5f5":"none", border:`1px solid ${isBlocked?"#f4b8b4":C.border}`, borderRadius:20, padding:"5px 12px", fontSize:12, cursor:modBusy?"default":"pointer", color:isBlocked?"#d63031":C.textMuted, fontFamily:T.body, opacity:modBusy?0.6:1 }}>{isBlocked?"🚫 Unblock":"🚫 Block"}</button>
               </div>
             </div>
           )}
-
           {isOwn && (
-            <button 
-              onClick={onEditAvatar} 
-              style={{ background: "none", border: `1px solid ${C.borderStrong}`, color: C.textMuted, borderRadius: 20, padding: "8px 16px", fontSize: 13, cursor: "pointer", fontFamily: T.body, fontWeight: 500, flexShrink: 0 }}
-            >
-              Edit avatar
-            </button>
+            <button onClick={onEditAvatar} style={{ background:"none", border:`1px solid ${C.borderStrong}`, color:C.textMuted, borderRadius:20, padding:"8px 16px", fontSize:13, cursor:"pointer", fontFamily:T.body, fontWeight:500, flexShrink:0 }}>Edit avatar</button>
           )}
         </div>
         {user.bio && <div style={{ fontSize:14, marginTop:14, fontFamily:T.body, lineHeight:1.5, color:C.text }}>{user.bio}</div>}
-      </div>
-
-      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20, marginBottom:16 }}>
-        <div style={{ fontWeight:600, fontSize:15, marginBottom:14, fontFamily:T.body }}>📊 {isOwn ? "Your stats" : `${user.displayName}'s stats`}</div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom: topPost ? 14 : 0 }}>
-          {[["❤️ Total likes", totalLikes], ["💬 Total comments", totalComments], ["📝 Posts written", userPosts.length], ["👥 Followers", user.followers?.length || 0], ["🤝 Following", user.following?.length || 0]].map(([l,v])=>(
-            <div key={l} style={{ background:C.bg, borderRadius:10, padding:"12px 14px" }}>
-              <div style={{ fontSize:20, fontWeight:700, fontFamily:T.body, color:C.accent }}>{v}</div>
-              <div style={{ fontSize:12, color:C.textMuted, marginTop:3, fontFamily:T.body }}>{l}</div>
+        <div style={{ display:"flex", gap:24, marginTop:16, borderTop:`1px solid ${C.border}`, paddingTop:14 }}>
+          {[["Posts",userPosts.length],["Followers",user.followers.length],["Following",user.following.length]].map(([l,v])=>(
+            <div key={l}>
+              <div style={{ fontWeight:700, fontSize:18, fontFamily:T.body }}>{v}</div>
+              <div style={{ fontSize:11, color:C.textMuted, fontFamily:T.body }}>{l}</div>
             </div>
           ))}
         </div>
-
-        {topPost && topPost.likes?.length > 0 && (
-          <div style={{ background:C.bg, borderRadius:10, padding:"12px 14px" }}>
-            <div style={{ fontSize:12, color:C.textMuted, fontFamily:T.body, marginBottom:4 }}>🏆 Most liked post</div>
-            <div style={{ fontSize:13, fontFamily:T.body, color:C.text, lineHeight:1.5 }}>"{topPost.content.slice(0,80)}{topPost.content.length>80?"…":""}"</div>
-            <div style={{ fontSize:12, color:C.accent, marginTop:4, fontFamily:T.body }}>❤️ {topPost.likes.length} likes</div>
-          </div>
-        )}
       </div>
+
+      {(
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:20, marginBottom:16 }}>
+          <div style={{ fontWeight:600, fontSize:15, marginBottom:14, fontFamily:T.body }}>📊 {isOwn ? "Your stats" : `${user.displayName}'s stats`}</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom: topPost ? 14 : 0 }}>
+            {[["❤️ Total likes", totalLikes],["💬 Total comments", totalComments],["📝 Posts written", userPosts.length],["👥 Followers", user.followers.length]].map(([l,v])=>(
+              <div key={l} style={{ background:C.bg, borderRadius:10, padding:"12px 14px" }}>
+                <div style={{ fontSize:20, fontWeight:700, fontFamily:T.body, color:C.accent }}>{v}</div>
+                <div style={{ fontSize:12, color:C.textMuted, marginTop:3, fontFamily:T.body }}>{l}</div>
+              </div>
+            ))}
+          </div>
+          {topPost && topPost.likes.length > 0 && (
+            <div style={{ background:C.bg, borderRadius:10, padding:"12px 14px" }}>
+              <div style={{ fontSize:12, color:C.textMuted, fontFamily:T.body, marginBottom:4 }}>🏆 Most liked post</div>
+              <div style={{ fontSize:13, fontFamily:T.body, color:C.text, lineHeight:1.5 }}>"{topPost.content.slice(0,80)}{topPost.content.length>80?"…":""}"</div>
+              <div style={{ fontSize:12, color:C.accent, marginTop:4, fontFamily:T.body }}>❤️ {topPost.likes.length} likes</div>
+            </div>
+          )}
+        </div>
+      )}
 
       {postsLoading && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>Loading posts…</div>}
       {!postsLoading && userPosts.length===0 && <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:"center", color:C.textMuted, fontFamily:T.body, fontSize:14 }}>No posts yet.</div>}
@@ -1055,7 +1046,6 @@ function ProfileScreen({ uid, users, cu, token, onFollow, onBack, onLike, onComm
     </div>
   );
 }
-
 
 function SettingsScreen({ cu, token, users, onLogout, onBack, onUpdate, onToast, hideCounts, onToggleHideCounts, todayMinutes, todaySessions }) {
   const [dn, setDn] = useState(cu.displayName);
