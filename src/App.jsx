@@ -2097,7 +2097,28 @@ const doCommentReply = async (pid, text, parentCommentId) => {
   />
 )}
 
-        {screen==="profile" && profileUid && <ProfileScreen uid={profileUid} users={users} cu={cu} token={token} onFollow={follow} onBack={()=>setScreen("feed")} onLike={like} onComment={comment} onCommentReply={doCommentReply} onDelete={deletePost} onDeleteComment={deleteComment} onUser={goUser} onError={(err)=>setToast({message:err.message,type:"error"})} onEditAvatar={()=>setEditingAvatar(true)} onToast={setToast} onEdit={editPost} hideCounts={hideCounts}/>}
+        {screen === "profile" && profileUid && (
+  <ProfileScreen 
+    uid={profileUid} 
+    users={users} 
+    cu={cu} 
+    token={token} 
+    onFollow={follow} 
+    onBack={() => setScreen("feed")} 
+    onLike={like} 
+    onComment={comment} 
+    onCommentReply={doCommentReply} 
+    onDelete={deletePost} 
+    onDeleteComment={deleteComment} 
+    onUser={goUser} 
+    onError={(err) => setToast({ message: err.message, type: "error" })} 
+    onEditAvatar={() => setEditingAvatar(true)} 
+    onToast={setToast} 
+    onEdit={editPost} 
+    hideCounts={hideCounts}
+  />
+)}
+
         {screen==="admin" && cu.isAdmin && <AdminDashboard users={users} posts={posts} cu={cu} token={token} onDeletePost={(pid)=>setPosts(prev=>prev.filter(p=>p.id!==pid))}/>}
         {screen==="settings" && <SettingsScreen cu={cu} token={token} users={users} onLogout={logout} onBack={()=>setScreen("feed")} onUpdate={updateProfile} onToast={setToast} hideCounts={hideCounts} onToggleHideCounts={toggleHideCounts} todayMinutes={mindful.todayMinutes} todaySessions={mindful.todaySessions}/>}
       </div>
