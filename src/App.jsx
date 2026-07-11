@@ -467,7 +467,7 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
     fontFamily:T.body, borderRadius:6, transition:"background 0.15s",
   });
 
-  return (
+  if (onDeleteComment) onDeleteComment(postId, commentId);} else {onToast ? onToast({ message: data.error || "Could not remove comment.", type: "error" }) : alert(data.error);}}).catch(err => {onToast ? onToast({ message: err.message || "Network error.", type: "error" }) : alert(err.message);});}}onUser={(authorId) => {const targetUser = users.find(u => u.id === authorId);if (targetUser && onUser) onUser(targetUser);}}/></>)});return (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, marginBottom:12, overflow:"hidden" }}>
       {/* Edit modal */}
       {editingPost && <EditPostModal post={post} cu={cu} token={token} onSave={onEdit} onCancel={()=>setEditingPost(false)} onToast={onToast}/>}
@@ -578,65 +578,46 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
           <span style={{ fontSize:15 }}>◯</span>{!hideCounts && <span>{post.comments.length}</span>}
         </button>
       </div>
-      {open && (
-        <>
-          <div style={{ padding: "0 16px" }}> 
-  <DiscussionPrompt postText={post.content} initialPrompt={discussionPrompt} onPromptChange={setDiscussionPrompt} /> 
-</div> 
-
-<ThreadedComments 
-  postId={post.id} 
-  currentUser={cu} // Uses the correct 'cu' variable context provided by PostCard props
-  users={users} 
-  comments={(post.comments || []).map(c => ({ 
-    ...c, 
-    text: c.text || c.content 
-  }))} 
- onAddComment={(postId, text, parentCommentId) => {
-    const data = await api.post(`/api/posts/${postId}/comments`, { 
-      content: text, 
-      parentCommentId 
-    }, token);
-    
-  if (parentCommentId) {
-      onCommentReply?.(postId, text, parentCommentId);
-    } else {
-      onComment?.(postId, text);
-    }
-  }}
-  onDeleteComment={(postId, commentId) => onDeleteComment?.(postId, commentId)}
-  
-  onDeleteComment={async (postId, commentId) => {
-    const data = await api.delete(`/api/posts/${postId}/comments/${commentId}`, token);
-    if (!data.error) {
-      if (onDeleteComment) onDeleteComment(postId, commentId); 
-    } else {
-      onToast ? onToast({ message: data.error || "Could not remove comment.", type: "error" }) : alert(data.error);
-    }
-  }}
-
-  onDeleteComment={async (postId, commentId) => {
-    const data = await api.delete(`/api/posts/${postId}/comments/${commentId}`, token);
-    if (!data.error) {
-      if (onDeleteComment) onDeleteComment(postId, commentId); 
-    } else {
-      onToast ? onToast({ message: data.error || "Could not remove comment.", type: "error" }) : alert(data.error);
-    }
-  }}
-  onUser={(authorId) => {
-    const targetUser = users.find(u => u.id === authorId);
-    if (targetUser && onUser) onUser(targetUser);
-  }} 
-/>
-
-</>
-      )}
+ {open && (
+  <>
+    <div style={{ padding: "0 16px" }}>
+      <DiscussionPrompt postText={post.content} initialPrompt={discussionPrompt} onPromptChange={setDiscussionPrompt} />
     </div>
-  );
-}
+    <ThreadedComments 
+      postId={post.id} 
+      currentUser={cu} 
+      users={users} 
+      comments={(post.comments || []).map(c => ({ ...c, text: c.text || c.content }))} 
+      onAddComment={async (postId, text, parentCommentId) => { 
+        const data = post(`/api/posts/${postId}/comments`, { content: text, parentCommentId }, token); 
+        if (!data.error) { 
+          if (parentCommentId) {
+            onCommentReply?.(postId, data.comment || text, parentCommentId);
+          } else {
+            onComment?.(postId, data.comment || data); 
+          }
+        } else { 
+          onToast ? onToast({ message: data.error || "Could not publish comment.", type: "error" }) : alert(data.error); 
+        } 
+      }} 
+      onDeleteComment={async (postId, commentId) => { 
+        const data = await api.delete(`/api/posts/${postId}/comments/${commentId}`, token); 
+        if (!data.error) { 
+          if (onDeleteComment) onDeleteComment(postId, commentId); 
+        } else { 
+          onToast ? onToast({ message: data.error || "Could not remove comment.", type: "error" }) : alert(data.error); 
+        } 
+      }} 
+      onUser={(authorId) => { 
+        const targetUser = users.find(u => u.id === authorId); 
+        if (targetUser && onUser) onUser(targetUser); 
+      }} 
+    />
+  </>
+ );
 
 function FeedScreen({ posts, users, cu, token, onLike, onComment, onCommentReply, onDelete, onDeleteComment, onUser, onError, onToast, onEdit, hideCounts }) {
-  const feed = posts.filter(p=>hasId(cu.following, p.authorId)||sameId(p.authorId, cu.id)).sort((a,b)=>b.timestamp-a.timestamp);
+  const feed = filter(p=>hasId(cu.following, p.authorId)||sameId(p.authorId, cu.id)).sort((a,b)=>b.timestamp-a.timestamp);
   return (
     <div>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
@@ -654,47 +635,112 @@ function FeedScreen({ posts, users, cu, token, onLike, onComment, onCommentReply
   );
 }
 
-function ExploreScreen({ posts, users, cu, onUser, onFollow, hideCounts }) {
-  const [tab, setTab] = useState("people");
-  const [selTag, setSelTag] = useState(null);
-  const tagMap = {};
-  posts.forEach(p=>parseTags(p.content).forEach(t=>{ tagMap[t]=(tagMap[t]||0)+1; }));
-  const hashtags = Object.entries(tagMap).sort((a,b)=>a[0].localeCompare(b[0]));
-  const tagPosts = selTag ? posts.filter(p=>p.content.toLowerCase().includes(selTag)).sort((a,b)=>b.timestamp-a.timestamp) : [];
-  const others = users.filter(u=>!sameId(u.id, cu.id)).sort((a,b)=>a.username.localeCompare(b.username));
 
-  return (
-    <div>
-      <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:20 }}>
-        {[["people",`People (${others.length})`],["tags",`Tags (${hashtags.length})`]].map(([id,label])=>(
-          <button key={id} onClick={()=>setTab(id)} style={{ flex:1, background:"none", border:"none", padding:"0 0 12px", fontSize:14, fontWeight:tab===id?600:400, color:tab===id?C.text:C.textMuted, borderBottom:tab===id?`2px solid ${C.accent}`:"2px solid transparent", cursor:"pointer", fontFamily:T.body, marginBottom:-1 }}>{label}</button>
-        ))}
+function ExploreScreen({ posts, users, cu, onUser, onFollow, hideCounts })
+  const [tab, setTab] = useState("people"); 
+  const [selTag, setSelTag] = useState(null); 
+  const tagMap = {}; 
+
+  // Parse hashtags out of posts
+  posts.forEach(p => parseTags(p.content).forEach(t => { 
+    tagMap[t] = (tagMap[t] || 0) + 1; 
+  })); 
+
+  const hashtags = Object.entries(tagMap).sort((a, b) => a[0].localeCompare(b[0])); 
+  
+  const tagPosts = selTag 
+    ? posts.filter(p => p.content.toLowerCase().includes(selTag.toLowerCase())).sort((a, b) => b.timestamp - a.timestamp) 
+    : []; 
+  
+  const others = users
+    .filter(u => !sameId(u.id, cu.id))
+    .sort((a, b) => a.username.localeCompare(b.username)); 
+
+  return ( 
+    <div> 
+      {/* Tab Navigation Menu */}
+      <div style={{ display: "flex", borderBottom: `1px solid ${C.border}`, marginBottom: 20 }}> 
+        {[["people", `People (${others.length})`], ["tags", `Tags (${hashtags.length})`]].map(([id, label]) => ( 
+          <button 
+            key={id} 
+            onClick={() => setTab(id)} 
+            style={{ flex: 1, background: "none", border: "none", padding: "0 0 12px", fontSize: 14, fontWeight: tab === id ? 600 : 400, color: tab === id ? C.text : C.textMuted, borderBottom: tab === id ? `2px solid ${C.accent}` : "2px solid transparent", cursor: "pointer", fontFamily: T.body, marginBottom: -1 }}
+          >
+            {label}
+          </button> 
+        ))} 
       </div>
 
-      {tab==="people" && (
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {others.map(u=>{
+      {/* People Tab Content Section */}
+      {tab === "people" && ( 
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}> 
+          {others.map(u => { 
+            // Type-safe integer lookup to prevent follow mismatch bugs
             const following = Array.isArray(cu.following) && cu.following.some(id => {
-  const cleanId = typeof id === 'object' && id !== null ? (id.followingId || id.id) : id;
-  return Number(cleanId) === Number(u.id);
-});
+              const cleanId = typeof id === 'object' && id !== null ? (id.followingId || id.id) : id;
+              return Number(cleanId) === Number(u.id);
+            });
+            
+            const pc = posts.filter(p => p.authorId === u.id).length; 
+            
+            return ( 
+              <div 
+                key={u.id} 
+                style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} 
+                onClick={() => onUser(u)}
+              > 
+                <Av user={u} size={44}/> 
+                <div style={{ flex: 1, minWidth: 0 }}> 
+                  <div style={{ fontWeight: 600, fontSize: 15, fontFamily: T.body }}>{u.displayName}</div> 
+                  <div style={{ color: C.textMuted, fontSize: 12 }}>@{u.username} · {pc} post{pc !== 1 ? "s" : ""}</div> 
+                  {u.bio && <div style={{ fontSize: 13, marginTop: 2, fontFamily: T.body, color: C.text }}>{u.bio}</div>} 
+                </div> 
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onFollow(u.id); }} 
+                  style={{ fontSize: 12, padding: "5px 14px", borderRadius: 20, border: `1px solid ${following ? C.borderStrong : C.accent}`, color: following ? C.textMuted : C.accent, background: "none", cursor: "pointer", fontFamily: T.body, fontWeight: 500, flexShrink: 0 }}
+                >
+                  {following ? "Following" : "Follow"}
+                </button> 
+              </div> 
+            ); 
+          })} 
+        </div> 
+      )} 
+ 
 
-            const pc = posts.filter(p=>p.authorId===u.id).length;
-            return (
-              <div key={u.id} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }} onClick={()=>onUser(u)}>
-                <Av user={u} size={44}/>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontWeight:600, fontSize:15, fontFamily:T.body }}>{u.displayName}</div>
-                  <div style={{ color:C.textMuted, fontSize:12 }}>@{u.username} · {pc} post{pc!==1?"s":""}</div>
-                  {u.bio && <div style={{ fontSize:13, marginTop:2, fontFamily:T.body, color:C.text }}>{u.bio}</div>}
-                </div>
-                <button onClick={e=>{e.stopPropagation();onFollow(u.id);}} style={{ fontSize:12, padding:"5px 14px", borderRadius:20, border:`1px solid ${following?C.borderStrong:C.accent}`, color:following?C.textMuted:C.accent, background:"none", cursor:"pointer", fontFamily:T.body, fontWeight:500, flexShrink:0 }}>{following?"Following":"Follow"}</button>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {tab === "tags" && ( 
+        <div> 
+          {selTag && ( 
+            <div style={{ marginBottom: 20 }}> 
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}> 
+                <span style={{ fontSize: 20, fontWeight: 700, fontFamily: T.brand, color: C.accent }}>#{selTag}</span> 
+                <button onClick={() => setSelTag(null)} style={{ background: C.border, border: "none", borderRadius: 20, padding: "3px 10px", fontSize: 11, cursor: "pointer", color: C.textMuted, fontFamily: T.body }}>✕ clear</button> 
+              </div> 
+              {tagPosts.map(p => (
+                <PostCard key={p.id} post={p} users={users} cu={cu} onLike={() => {}} onComment={() => {}} onDelete={() => {}} onDeleteComment={() => {}} onUser={onUser} hideCounts={hideCounts}/>
+              ))} 
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16, marginTop: 8 }}> 
+                <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, fontFamily: T.body }}>All tags</div> 
+              </div> 
+            </div> 
+          )} 
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}> 
+            {hashtags.map(([tag, count]) => ( 
+              <button 
+                key={tag} 
+                onClick={() => setSelTag(selTag === tag ? null : tag)} 
+                style={{ background: selTag === tag ? C.accentLight : C.surface, border: `1px solid ${selTag === tag ? C.accent : C.border}`, borderRadius: 20, padding: "6px 14px", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontFamily: T.body }}
+              > 
+                <span style={{ color: C.accent, fontSize: 14 }}>#{tag}</span> 
+                <span style={{ color: C.textMuted, fontSize: 11, background: C.border, borderRadius: 10, padding: "1px 6px" }}>{count}</span> 
+              </button> 
+            ))} 
+          </div> 
+        </div> 
+      )
 
+ };
+    
       {tab==="tags" && (
         <div>
           {selTag && (
@@ -721,7 +767,7 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow, hideCounts }) {
       )}
     </div>
   );
-}
+);
 
 
 function AdminDashboard({ users, posts, cu, token, onDeletePost }) {
