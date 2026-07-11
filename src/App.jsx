@@ -407,8 +407,7 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
   if (!author) return null;
   const liked = post.likes.includes(cu.id);
   const isAuthor = post.authorId === cu.id;
-  const doComment = () => { if(!ct.trim()) return; onComment(post.id,ct.trim()); setCt(""); };
-  
+
   const handleDeletePost = async () => {
     setDeleting(true);
     try {
@@ -418,17 +417,6 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
       onError?.(err);
     } finally {
       setDeleting(false);
-    }
-  };
-
-  const handleDeleteComment = async (cid) => {
-    setDeletingCommentId(cid);
-    try {
-      await onDeleteComment(post.id, cid);
-    } catch (err) {
-      onError?.(err);
-    } finally {
-      setDeletingCommentId(null);
     }
   };
 
@@ -592,26 +580,18 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
     ...c, 
     text: c.text || c.content 
   }))} 
-  onAddComment={async (postId, text, parentCommentId) => {
-    const data = await api.post(`/api/posts/${postId}/comments`, { 
-      content: text, 
-      parentCommentId 
-    }, token);
-    
-    if (!data.error) {
-      if (onComment) onComment(postId, data.comment || data); 
-    } else {
-      onToast ? onToast({ message: data.error || "Could not publish comment.", type: "error" }) : alert(data.error);
-    }
+  onAddComment={(postId, text, parentCommentId, quotedCommentId) => {
+    // Delegates to onComment/onCommentReply (App.jsx's comment()/
+    // doCommentReply()) instead of firing its own request. Those already
+    // hit the correct singular /api/posts/:id/comment endpoint, update
+    // local state, and toast on failure. This used to POST to
+    // /api/posts/:id/comments (plural) — no such route exists, so it fell
+    // through the SPA catch-all and every add silently failed.
+    return parentCommentId
+      ? onCommentReply?.(postId, text, parentCommentId, quotedCommentId)
+      : onComment?.(postId, text);
   }}
-  onDeleteComment={async (postId, commentId) => {
-    const data = await api.delete(`/api/posts/${postId}/comments/${commentId}`, token);
-    if (!data.error) {
-      if (onDeleteComment) onDeleteComment(postId, commentId); 
-    } else {
-      onToast ? onToast({ message: data.error || "Could not remove comment.", type: "error" }) : alert(data.error);
-    }
-  }}
+  onDeleteComment={(postId, commentId) => onDeleteComment?.(postId, commentId)}
   onUser={(authorId) => {
     const targetUser = users.find(u => u.id === authorId);
     if (targetUser && onUser) onUser(targetUser);
@@ -921,8 +901,8 @@ function ProfileScreen({ uid, users, cu, token, onFollow, onBack, onLike, onComm
       if (Array.isArray(res)) setUserPosts(res.sort((a,b)=>b.timestamp-a.timestamp));
     }).catch(()=>{});
   };
-  const handleCommentReply = async (pid, text, parentCommentId) => {
-    await onCommentReply?.(pid, text, parentCommentId);
+  const handleCommentReply = async (pid, text, parentCommentId, quotedCommentId) => {
+    await onCommentReply?.(pid, text, parentCommentId, quotedCommentId);
     api.get(`/api/posts?userId=${uid}`, token).then(res => {
       if (Array.isArray(res)) setUserPosts(res.sort((a,b)=>b.timestamp-a.timestamp));
     }).catch(()=>{});
@@ -1884,7 +1864,10 @@ const saveSecurityQuestion = async () => {
     token
   );
 
-  if (res.error) return;
+  if (res.error) {
+    setToast({ message: res.error || "Could not publish comment.", type: "error" });
+    return;
+  }
 
   setPosts(prev => prev.map(p => {
     if (p.id !== pid) return p;
@@ -1899,17 +1882,21 @@ const saveSecurityQuestion = async () => {
   }));
 };
 
-const doCommentReply = async (pid, text, parentCommentId) => {
+const doCommentReply = async (pid, text, parentCommentId, quotedCommentId = null) => {
   const res = await api.post(
     `/api/posts/${pid}/comment`,
     {
       text,
-      parentCommentId
+      parentCommentId,
+      quotedCommentId
     },
     token
   );
 
-  if (res.error) return;
+  if (res.error) {
+    setToast({ message: res.error || "Could not publish reply.", type: "error" });
+    return;
+  }
 
   setPosts(prev => prev.map(p => {
     if (p.id !== pid) return p;
