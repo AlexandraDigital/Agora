@@ -118,7 +118,7 @@ export function ThreadedComments({
   const handlePostReply = () => {
     if (!replyText.trim() || !replyingTo) return;
     
-    onAddComment(postId, replyText, replyingTo);
+    onAddComment(postId, replyText, replyingTo, quotedCommentId);
     setReplyText("");
     setReplyingTo(null);
     setQuotedCommentId(null);
@@ -132,9 +132,13 @@ export function ThreadedComments({
   // Get all top-level comments (no parent)
   const topLevelComments = comments.filter(c => !c.parentCommentId);
 
-  // Get replies to a specific comment
+  // Get replies to a specific comment.
+  // parentCommentId is a TEXT column (migration 008) so D1 always returns it
+  // as a string, while comment.id comes back as a number from the INTEGER
+  // primary key — strict === between them never matched, so every reply was
+  // fetched successfully but silently failed to nest under its parent.
   const getReplies = (commentId) => {
-    return comments.filter(c => c.parentCommentId === commentId);
+    return comments.filter(c => c.parentCommentId != null && String(c.parentCommentId) === String(commentId));
   };
 
   // Recursive comment thread renderer
