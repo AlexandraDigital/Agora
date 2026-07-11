@@ -623,7 +623,7 @@ function FeedScreen({ posts, users, cu, token, onLike, onComment, onCommentReply
   );
 }
 
-function ExploreScreen({ posts, users, cu, onUser, onFollow, hideCounts }) {
+function ExploreScreen({ posts, users, cu, token, onLike, onComment, onCommentReply, onDelete, onDeleteComment, onUser, onFollow, onError, onToast, onEdit, hideCounts }) {
   const [tab, setTab] = useState("people");
   const [selTag, setSelTag] = useState(null);
   const tagMap = {};
@@ -672,7 +672,7 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow, hideCounts }) {
                 <span style={{ fontSize:20, fontWeight:700, fontFamily:T.brand, color:C.accent }}>{selTag}</span>
                 <button onClick={()=>setSelTag(null)} style={{ background:C.border, border:"none", borderRadius:20, padding:"3px 10px", fontSize:11, cursor:"pointer", color:C.textMuted, fontFamily:T.body }}>✕ clear</button>
               </div>
-              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} onLike={()=>{}} onComment={()=>{}} onDelete={()=>{}} onDeleteComment={()=>{}} onUser={onUser} hideCounts={hideCounts}/>)}
+              {tagPosts.map(p=><PostCard key={p.id} post={p} users={users} cu={cu} token={token} onLike={onLike} onComment={onComment} onCommentReply={onCommentReply} onDelete={onDelete} onDeleteComment={onDeleteComment} onUser={onUser} onError={onError} onToast={onToast} onEdit={onEdit} hideCounts={hideCounts}/>)}
               <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:16, marginTop:8 }}>
                 <div style={{ fontSize:12, color:C.textMuted, marginBottom:12, fontFamily:T.body }}>All tags</div>
               </div>
@@ -2080,6 +2080,9 @@ const doCommentReply = async (pid, text, parentCommentId, quotedCommentId = null
     onDeleteComment={deleteComment} 
     onUser={goUser} 
     onFollow={follow} 
+    onError={(err)=>setToast({message:err.message,type:"error"})}
+    onToast={setToast}
+    onEdit={editPost}
     hideCounts={hideCounts}
   />
 )}
