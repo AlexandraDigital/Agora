@@ -1829,7 +1829,7 @@ const saveSecurityQuestion = async () => {
   const follow = async (uid) => {
   if (sameId(uid, cu.id)) return;
   try {
-    const res = await api.post('/api/follow', { targetId: Number(uid) }, token);
+   const res = await api.post(`/api/follow/${Number(uid)}`, {}, token);
     if (res.error) {
       setToast({ message: res.error, type: "error" });
       return;
