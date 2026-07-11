@@ -13,28 +13,59 @@ export async function onRequestOptions() {
   });
 }
 
-// Handles the explicit DELETE HTTP request to clear custom comment nodes
-export async function onRequestDelete({ request, params, env }) {
+// Creates a new comment on a post — a top-level comment when parentCommentId
+// is omitted, or a reply (optionally a "quote" reply) when it's set.
+export async function onRequestPost({ request, params, env }) {
   const db = env.DB;
-  const commentId = params.commentId;
-
   const cu = await verifyAuth(request, db);
   if (!cu) return errResponse("Unauthorized", 401);
 
+  const postId = Math.trunc(Number(params.id));
+  if (!Number.isInteger(postId)) return errResponse("Post not found", 404);
+
+  const post = await db.prepare("SELECT id FROM posts WHERE id=?").bind(postId).first();
+  if (!post) return errResponse("Post not found", 404);
+
+  let body;
   try {
-    // Ownership guard validation step
-    const comment = await db.prepare("SELECT authorId FROM comments WHERE id = ?").bind(commentId).first();
-    if (!comment) return errResponse("Comment not found.", 404);
-    
-    // Checks if current session identity matches target comment author or holds admin status
-    if (String(comment.authorId) !== String(cu.id) && !cu.isAdmin) {
-      return errResponse("Forbidden", 403);
-    }
-
-    await db.prepare("DELETE FROM comments WHERE id = ?").bind(commentId).run();
-    return jsonResponse({ ok: true, id: commentId });
-
+    body = await request.json();
   } catch (e) {
-    return errResponse("Failed to modify database graph state references.", 500);
+    return errResponse("Invalid request body", 400);
   }
+
+  // App.jsx's comment/doCommentReply send `text`; PostCard's ThreadedComments
+  // wiring historically sent `content` — accept either so both keep working.
+  const text = String(body.text ?? body.content ?? "").trim();
+  if (!text) return errResponse("Comment can't be empty", 400);
+
+  const parentCommentId = body.parentCommentId ? Math.trunc(Number(body.parentCommentId)) : null;
+  const quotedCommentId = body.quotedCommentId ? Math.trunc(Number(body.quotedCommentId)) : null;
+
+  // quotedAuthorId is always derived server-side from the quoted comment's
+  // real author — never trust a client-supplied value here, or the
+  // "Replying to X" label in ThreadedComments could be spoofed.
+  let quotedAuthorId = null;
+  if (quotedCommentId) {
+    const quoted = await db.prepare("SELECT authorId FROM comments WHERE id=?").bind(quotedCommentId).first();
+    if (quoted) quotedAuthorId = quoted.authorId;
+  }
+
+  const timestamp = Date.now();
+
+  const result = await db.prepare(
+    "INSERT INTO comments (postId, authorId, text, timestamp, parentCommentId, quotedCommentId, quotedAuthorId) VALUES (?,?,?,?,?,?,?)"
+  ).bind(postId, cu.id, text, timestamp, parentCommentId, quotedCommentId, quotedAuthorId).run();
+
+  // Returned flat (not wrapped in { comment: ... }) — App.jsx's comment()
+  // and doCommentReply() push this response directly into post.comments.
+  return jsonResponse({
+    id: result.meta.last_row_id,
+    postId,
+    authorId: cu.id,
+    text,
+    timestamp,
+    parentCommentId,
+    quotedCommentId,
+    quotedAuthorId,
+  });
 }

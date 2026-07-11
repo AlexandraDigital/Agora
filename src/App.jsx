@@ -592,18 +592,29 @@ function PostCard({ post, users, cu, token, onLike, onComment, onCommentReply, o
     ...c, 
     text: c.text || c.content 
   }))} 
-  onAddComment={async (postId, text, parentCommentId) => {
+ onAddComment={(postId, text, parentCommentId) => {
     const data = await api.post(`/api/posts/${postId}/comments`, { 
       content: text, 
       parentCommentId 
     }, token);
     
-    if (!data.error) {
-      if (onComment) onComment(postId, data.comment || data); 
+  if (parentCommentId) {
+      onCommentReply?.(postId, text, parentCommentId);
     } else {
-      onToast ? onToast({ message: data.error || "Could not publish comment.", type: "error" }) : alert(data.error);
+      onComment?.(postId, text);
     }
   }}
+  onDeleteComment={(postId, commentId) => onDeleteComment?.(postId, commentId)}
+  
+  onDeleteComment={async (postId, commentId) => {
+    const data = await api.delete(`/api/posts/${postId}/comments/${commentId}`, token);
+    if (!data.error) {
+      if (onDeleteComment) onDeleteComment(postId, commentId); 
+    } else {
+      onToast ? onToast({ message: data.error || "Could not remove comment.", type: "error" }) : alert(data.error);
+    }
+  }}
+
   onDeleteComment={async (postId, commentId) => {
     const data = await api.delete(`/api/posts/${postId}/comments/${commentId}`, token);
     if (!data.error) {
