@@ -663,7 +663,11 @@ function ExploreScreen({ posts, users, cu, onUser, onFollow, hideCounts }) {
       {tab==="people" && (
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
           {others.map(u=>{
-            const following = hasId(cu.following, u.id);
+            const following = Array.isArray(cu.following) && cu.following.some(id => {
+  const cleanId = typeof id === 'object' && id !== null ? (id.followingId || id.id) : id;
+  return Number(cleanId) === Number(u.id);
+});
+
             const pc = posts.filter(p=>p.authorId===u.id).length;
             return (
               <div key={u.id} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }} onClick={()=>onUser(u)}>
@@ -1823,46 +1827,42 @@ const saveSecurityQuestion = async () => {
 };
 
   const follow = async (uid) => {
-    if (sameId(uid, cu.id)) return;
-
-    try {
-      const res = await api.post(`/api/follow/${uid}`, {}, token);
-      if (res.error) {
-        setToast({ message: res.error, type:"error" });
-        return;
-      }
-
-      const isFollowing = typeof res.following === "boolean" ? res.following : !hasId(cu.following, uid);
-      // Default to [] — cu.following/u.followers can be missing on a user
-      // object that didn't come from the shaped /api/users list (e.g. a
-      // fresh signup response), and a bare .filter() on undefined here
-      // would throw *after* the follow already succeeded server-side,
-      // leaving the button looking unresponsive with no error shown.
-      const newCu = {
-        ...cu,
-        following: isFollowing
-          ? [...(cu.following || []).filter(id=>!sameId(id, uid)), uid]
-          : (cu.following || []).filter(id=>!sameId(id, uid))
-      };
-      setCu(newCu);
-      localStorage.setItem("ag_cu", JSON.stringify(newCu));
-      setUsers(prev => prev.map(u => {
-        if (sameId(u.id, uid)) {
-          return {
-            ...u,
-            followers: isFollowing
-              ? [...(u.followers || []).filter(id=>!sameId(id, cu.id)), cu.id]
-              : (u.followers || []).filter(id=>!sameId(id, cu.id))
-          };
-        }
-        return u;
-      }));
-    } catch (err) {
-      // The POST may well have already gone through server-side even if
-      // this block throws — say so rather than pretending nothing happened.
-      setToast({ message: "Follow status may not be up to date — refresh to check.", type: "error" });
+  if (sameId(uid, cu.id)) return;
+  try {
+    const res = await api.post('/api/follow', { targetId: Number(uid) }, token);
+    if (res.error) {
+      setToast({ message: res.error, type: "error" });
+      return;
     }
-  };
+    
+    const isFollowing = typeof res.following === "boolean" ? res.following : !hasId(cu.following, uid);
+    
+    const newCu = { 
+      ...cu, 
+      following: isFollowing 
+        ? [...(cu.following || []).filter(id => Number(id) !== Number(uid)), Number(uid)] 
+        : (cu.following || []).filter(id => Number(id) !== Number(uid)) 
+    };
+    
+    setCu(newCu);
+    localStorage.setItem("ag_cu", JSON.stringify(newCu));
+    
+    setUsers(prev => prev.map(u => {
+      if (Number(u.id) === Number(uid)) {
+        return { 
+          ...u, 
+          followers: isFollowing 
+            ? [...(u.followers || []).filter(id => Number(id) !== Number(cu.id)), Number(cu.id)] 
+            : (u.followers || []).filter(id => Number(id) !== Number(cu.id)) 
+        };
+      }
+      return u;
+    }));
+  } catch (err) {
+    setToast({ message: "Follow status may not be up to date — refresh to check.", type: "error" });
+  }
+};
+
 
   const like = async (pid) => {
     await api.post(`/api/posts/${pid}/like`, {}, token);
