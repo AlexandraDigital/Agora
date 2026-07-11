@@ -20,8 +20,15 @@ export async function onRequestPost({ request, params, env }) {
   const cu = await verifyAuth(request, db);
   if (!cu) return errResponse("Unauthorized", 401);
 
-  const postId = Math.trunc(Number(params.id));
-  if (!Number.isInteger(postId)) return errResponse("Post not found", 404);
+  // posts.id is a UUID string (generateUUID() at creation, TEXT PRIMARY KEY)
+  // — not an autoincrement integer like comments.id or users.id. This used
+  // to run params.id through Math.trunc(Number(...)), which turns every
+  // UUID into NaN and made every comment request 404 with "Post not found",
+  // no matter which post it was. like.js, report.js, and [id]/index.js all
+  // correctly treat params.id as a plain string for the same reason —
+  // matching that here.
+  const postId = params.id;
+  if (!postId) return errResponse("Post not found", 404);
 
   const post = await db.prepare("SELECT id FROM posts WHERE id=?").bind(postId).first();
   if (!post) return errResponse("Post not found", 404);
