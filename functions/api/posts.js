@@ -120,7 +120,7 @@ export async function onRequestPost({ request, env }) {
     } 
 
     const spam = detectSpam(content); 
-    if (spam.detected) { 
+    if (spam.detected && spam.severity === "high") { 
       await logModeration(db, { type: "auto-reject", reason: "spam", authorId: authorIdString }); 
       return errResponse("Post was flagged as spam and was not published.", 400); 
     } 
