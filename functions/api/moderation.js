@@ -1,10 +1,9 @@
 import { verifyAuth, jsonResponse, errResponse } from "./_helpers.js";
 
-// Simple UUID v4 generator
+// Simple UUID v4 generator function
 function generateUUID() {
   return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
-    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4))))
-    .toString(16)
+    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
   );
 }
 
@@ -14,28 +13,32 @@ function generateUUID() {
  */
 export function detectProfanity(text) {
   // Comprehensive profanity patterns - detects common offensive words
-  // Uses word boundaries and common leetspeak/bypass variations
+  // Uses discrete word boundaries for each capture entry to prevent false substring matches
   const profanityPatterns = [
-    // Common profanities with variations (leetspeak, special chars)
-    /\b(damn|hell|crap|arse|arsehole|bastard|bloody|suck|sucks|sucks?\b)/gi,
+    // Common profanities with discrete whole word boundaries applied to each word
+    /\b(damn|crap|arse|arsehole|bastard|bloody|suck|sucks)\b/gi,
+    /\bhell\b/gi, // Safely isolated so 'hello', 'shell', or 'hellish' will never trigger a false flag
+    
     // Severe profanities with variations
-    /\b(f[u!@]ck|f[u!@]ck(?:ing|er|ed)?|sh[i!1]t|sh[i!1]tt?y|ass|asshole|bitch|bitches?|dick|dickhead|piss(?:ed|y)?)/gi,
+    /\b(f[u!@]ck|f[u!@]ck(?:ing|er|ed)?|sh[i!1]t|sh[i!1]tt?y|ass|asshole|bitch|bitches?|dick|dickhead|piss(?:ed|y)?)\b/gi,
+    
     // Variations with special characters
     /f[*@]ck|sh[*!]t|@ss|b[i1]tch|d[i1]ck/gi,
+    
     // Repeated characters for emphasis
     /(\w)\1{4,}(curse|swear|damn|hell)/gi,
   ];
-  
+
   const detected = profanityPatterns.some(pattern => pattern.test(text));
   const patterns = [];
-  
+
   if (detected) {
     profanityPatterns.forEach(pattern => {
       const matches = text.match(pattern);
       if (matches) patterns.push(...matches.map(m => m.toLowerCase()).slice(0, 2));
     });
   }
-  
+
   return {
     detected: detected,
     severity: detected ? "high" : "none",
@@ -50,23 +53,23 @@ export function detectProfanity(text) {
 export function detectSpam(text) {
   // Spam patterns to detect
   const spamPatterns = [
-    /(?:http|ftp)s?:\/\/[^\s]+/gi,  // URLs
-    /\b(?:\$+|bitcoin|crypto|nft|ethereum|dogecoin|ethereum|ripple|cardano)\b/gi,  // Crypto/financial spam
+    /(?:http|ftp)s?:\/\/[^\s]+/gi, // URLs
+    /\b(?:\$+|bitcoin|crypto|nft|ethereum|dogecoin|ethereum|ripple|cardano)\b/gi, // Crypto/financial spam
     /\b(?:click|buy|invest|join|free|win|earn|cash|money)\s+(?:now|here|fast|easy)\b/gi, // Common spam phrases
     // Flag any character repeated 8+ times in a row (e.g., oooooooo, !!!!!!!!!)
-    /(.)\1{7,}/,  // Simplified: any char repeated 8+ times
+    /(.)\1{7,}/, 
   ];
-  
+
   const detected = spamPatterns.some(pattern => pattern.test(text));
   const patterns = [];
-  
+
   if (detected) {
     spamPatterns.forEach(pattern => {
       const matches = text.match(pattern);
       if (matches) patterns.push(...matches.slice(0, 3).map(m => m.toLowerCase()));
     });
   }
-  
+
   return {
     detected: detected,
     severity: detected ? "medium" : "none",
@@ -98,17 +101,12 @@ export async function onRequestPost({ request, env }) {
       const post = await db.prepare(
         "SELECT * FROM posts WHERE id = ?"
       ).bind(postId).first();
-      
       if (!post) return errResponse("Post not found", 404);
-
-      // Prevent self-reporting (optional)
-      // if (post.authorId === cu.id) return errResponse("Cannot report own posts", 400);
 
       // Check for duplicate reports from same user
       const existing = await db.prepare(
         "SELECT * FROM post_reports WHERE postId = ? AND reportedBy = ?"
       ).bind(postId, cu.id).first();
-
       if (existing) return errResponse("Already reported this post", 400);
 
       // Insert report
@@ -131,7 +129,6 @@ export async function onRequestPost({ request, env }) {
       const user = await db.prepare(
         "SELECT * FROM users WHERE id = ?"
       ).bind(targetUserId).first();
-      
       if (!user) return errResponse("User not found", 404);
       if (targetUserId === cu.id) return errResponse("Cannot block yourself", 400);
 
@@ -139,7 +136,6 @@ export async function onRequestPost({ request, env }) {
       const existing = await db.prepare(
         "SELECT * FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = ?"
       ).bind(cu.id, targetUserId, "block").first();
-
       if (existing) return jsonResponse({ success: true, message: "Already blocked" });
 
       // Insert block
@@ -177,7 +173,6 @@ export async function onRequestPost({ request, env }) {
       const user = await db.prepare(
         "SELECT * FROM users WHERE id = ?"
       ).bind(targetUserId).first();
-      
       if (!user) return errResponse("User not found", 404);
       if (targetUserId === cu.id) return errResponse("Cannot mute yourself", 400);
 
@@ -185,7 +180,6 @@ export async function onRequestPost({ request, env }) {
       const existing = await db.prepare(
         "SELECT * FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = ?"
       ).bind(cu.id, targetUserId, "mute").first();
-
       if (existing) return jsonResponse({ success: true, message: "Already muted" });
 
       // Insert mute
@@ -231,7 +225,6 @@ export async function onRequestGet({ request, env }) {
 
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action");
-
     if (!["block", "mute"].includes(action)) {
       return errResponse("Invalid action", 400);
     }
