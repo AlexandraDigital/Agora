@@ -1,4 +1,5 @@
 import { verifyAuth, jsonResponse, errResponse } from "./_helpers.js";
+import { RegExpMatcher, englishDataset, englishRecommendedTransformers } from "obscenity";
 
 // Simple UUID v4 generator function
 function generateUUID() {
@@ -11,10 +12,8 @@ function generateUUID() {
 // pattern source. "damn" -> "\bd+a+m+n+\b", which matches "damn" and
 // stretched-out variants like "daaaamn" for emphasis, but \b still requires
 // a real word boundary on both sides — so it can never match as a bare
-// substring inside a longer innocent word. That's what let "hell" match
-// inside "hello" before: the old pattern only had a boundary in front of
-// the word, not after it, so anything starting with "hell" (hello, hellish,
-// shellfish) tripped it too.
+// substring inside a longer innocent word (that's what let "hell" match
+// inside "hello" before we added the trailing boundary).
 function toStretchedSource(word) {
   return "\\b" + word.split("").map(ch => `${ch}+`).join("") + "\\b";
 }
@@ -22,16 +21,27 @@ function toStretchedSource(word) {
 // Casual/mild words — flagged (severity "low") but not auto-rejected.
 const MILD_PROFANITY_WORDS = ["damn", "crap", "hell", "suck", "sucks", "bloody"];
 
-// Words serious enough to auto-reject the content (severity "high").
-const SEVERE_PROFANITY_WORDS = [
-  "fuck", "fucking", "fucker", "fucked", "motherfucker",
-  "shit", "shitty", "bullshit",
-  "ass", "asshole", "dumbass",
-  "bitch", "bitches",
-  "dick", "dickhead",
-  "piss", "pissed", "pissy",
-  "bastard", "arse", "arsehole",
-];
+// Severe-tier detection (severity "high", auto-rejected) is handled by the
+// "obscenity" library instead of a hand-maintained word list. It ships its
+// own actively-maintained dataset — severe profanity, slurs, and common
+// evasion patterns (leetspeak, symbol swaps, letter-stretching) — which is
+// a better source of truth than a list we'd write and have to keep
+// patching ourselves, and it's the same approach real moderation systems
+// use: a vetted, versioned dataset as a dependency, not inline strings.
+//
+// Built once at module scope: RegExpMatcher is stateless and safe to
+// reuse, and Cloudflare Workers run module-scope code once per isolate
+// and reuse it across requests, so this avoids rebuilding a fairly large
+// matcher on every single call.
+const builtDataset = englishDataset.build();
+const severeMatcher = new RegExpMatcher({
+  ...builtDataset,
+  ...englishRecommendedTransformers,
+  // Extend the library's own whitelist rather than replace it — spreading
+  // builtDataset.whitelistedTerms first keeps its existing entries (e.g.
+  // "Dickens"), then we layer on cases specific to this platform.
+  whitelistedTerms: [...builtDataset.whitelistedTerms, "dickinson", "dickcissel"],
+});
 
 /**
  * Detect profanity in text
@@ -40,26 +50,16 @@ const SEVERE_PROFANITY_WORDS = [
 export function detectProfanity(text) {
   if (!text) return { detected: false, severity: "none", patterns: [] };
 
-  // Built fresh on every call (not hoisted to module scope) — these use the
-  // /g flag, and a shared global RegExp keeps `lastIndex` between calls,
-  // which can make .test()/.match() silently skip matches on a later call.
-  // Rebuilding avoids that footgun entirely, same as before.
+  // Rebuilt fresh on every call (not hoisted to module scope) — this uses
+  // the /g flag, and a shared global RegExp keeps `lastIndex` between
+  // calls, which can make .match() silently skip matches on a later call.
   const mildPattern = new RegExp(MILD_PROFANITY_WORDS.map(toStretchedSource).join("|"), "gi");
-  const severePattern = new RegExp(SEVERE_PROFANITY_WORDS.map(toStretchedSource).join("|"), "gi");
-
-  // Obfuscated variants (f*ck, sh!t, @ss, b1tch, d1ck) — each alternative
-  // has its own boundary so e.g. "d1ck" can't match inside a longer word
-  // the way it used to (this is what flagged "Dickens" and "Dickinson").
-  // "@ss" only needs a trailing boundary: '@' isn't a word character, so
-  // it's already a natural delimiter on its own — a leading \b in front of
-  // a non-word character like '@' would actually never match after a space.
-  const obfuscatedPattern = /\bf[*@]ck\b|\bsh[*!]t\b|@ss\b|\bb[i1]tch\b|\bd[i1]ck\b/gi;
-
   const mildMatches = text.match(mildPattern) || [];
-  const severeMatches = [
-    ...(text.match(severePattern) || []),
-    ...(text.match(obfuscatedPattern) || []),
-  ];
+
+  // obscenity's endIndex is inclusive, so +1 to get a normal slice() end.
+  const severeMatches = severeMatcher
+    .getAllMatches(text)
+    .map(m => text.slice(m.startIndex, m.endIndex + 1));
 
   const severity = severeMatches.length ? "high" : mildMatches.length ? "low" : "none";
   const patterns = [...new Set([...severeMatches, ...mildMatches].map(m => m.toLowerCase()))].slice(0, 5);
