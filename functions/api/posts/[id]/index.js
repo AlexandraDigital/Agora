@@ -99,7 +99,7 @@ export async function onRequest({ request, env, params }) {
         return errResponse("Post contains inappropriate language.", 400);
       }
       const spam = detectSpam(content);
-      if (spam.detected) {
+      if (spam.detected && spam.severity === "high") {
         return errResponse("Post was flagged as spam.", 400);
       }
 
