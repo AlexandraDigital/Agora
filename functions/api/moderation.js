@@ -73,32 +73,48 @@ export function detectProfanity(text) {
 
 /**
  * Detect spam in text
- * Returns object with detected, severity, and patterns
+ * Returns object with detected, severity ("none" | "low" | "high"), and patterns
  */
 export function detectSpam(text) {
-  // Spam patterns to detect
-  const spamPatterns = [
-    /(?:http|ftp)s?:\/\/[^\s]+/gi, // URLs
-    /\b(?:\$+|bitcoin|crypto|nft|ethereum|dogecoin|ethereum|ripple|cardano)\b/gi, // Crypto/financial spam
-    /\b(?:click|buy|invest|join|free|win|earn|cash|money)\s+(?:now|here|fast|easy)\b/gi, // Common spam phrases
-    // Flag any character repeated 8+ times in a row (e.g., oooooooo, !!!!!!!!!)
-    /(.)\1{7,}/, 
-  ];
+  if (!text) return { detected: false, severity: "none", patterns: [] };
 
-  const detected = spamPatterns.some(pattern => pattern.test(text));
-  const patterns = [];
+  const urlMatches = text.match(/(?:http|ftp)s?:\/\/[^\s]+/gi) || [];
+  // Financial/crypto keywords. Note: no bare "$" check here (removed) — "$"
+  // isn't a word character, so \b\$+\b needs a word char immediately before
+  // it to register a boundary at all, which a space never provides. In the
+  // common case ("it costs $50") that boundary never existed, so the old
+  // check was already almost always inert; making it actually work would
+  // just flag every post that mentions a price.
+  const cryptoMatches = text.match(/\b(?:bitcoin|crypto|nft|ethereum|dogecoin|ripple|cardano)\b/gi) || [];
+  const phraseMatches = text.match(/\b(?:click|buy|invest|join|free|win|earn|cash|money)\s+(?:now|here|fast|easy)\b/gi) || [];
+  // Any character repeated 8+ times in a row (e.g. "oooooooo", "!!!!!!!!")
+  const repeatMatches = text.match(/(.)\1{7,}/g) || [];
 
-  if (detected) {
-    spamPatterns.forEach(pattern => {
-      const matches = text.match(pattern);
-      if (matches) patterns.push(...matches.slice(0, 3).map(m => m.toLowerCase()));
-    });
-  }
+  // Strong on its own: 2+ links, or 2+ distinct spam-CTA phrases, in one
+  // message. Either is specific enough to reject by itself.
+  const strongHit = urlMatches.length >= 2 || phraseMatches.length >= 2;
+
+  // Weak alone: a single link, a single spam-phrase match, a passing
+  // mention of crypto, or a stretch of repeated characters are all things
+  // that show up in completely normal posts — sharing one article, saying
+  // "I need cash now" or "join here", talking about crypto, typing
+  // "soooooo" or "!!!!!!!!" when excited. Any one of these alone is logged,
+  // not rejected. Two or more together looks a lot more like an actual
+  // spam message ("check out my new crypto NFT!!!!!! link: http://...").
+  const weakCategoriesHit = [
+    urlMatches.length === 1,
+    phraseMatches.length === 1,
+    cryptoMatches.length > 0,
+    repeatMatches.length > 0,
+  ].filter(Boolean).length;
+
+  const severity = strongHit || weakCategoriesHit >= 2 ? "high" : weakCategoriesHit >= 1 ? "low" : "none";
+  const patterns = [...new Set([...phraseMatches, ...urlMatches, ...cryptoMatches, ...repeatMatches].map(m => m.toLowerCase()))].slice(0, 5);
 
   return {
-    detected: detected,
-    severity: detected ? "medium" : "none",
-    patterns: [...new Set(patterns)] // deduplicate
+    detected: severity !== "none",
+    severity,
+    patterns, // deduplicated
   };
 }
 
