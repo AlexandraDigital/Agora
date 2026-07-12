@@ -16,6 +16,21 @@ const T = {
   display: "system-ui, sans-serif"
 };
 
+// Same helper as App.jsx: D1 returns INTEGER columns (comment.id, author/user
+// ids) as numbers but TEXT columns (parentCommentId, quotedCommentId) as
+// strings, so a strict === between an id and a *CommentId silently never
+// matches. String()-coercing both sides makes the comparison work no matter
+// which side D1 handed back as which type — this is what was already fixing
+// getReplies() below; the same gap was open here for author/ownership/quote
+// lookups (author resolution, the Delete-button ownership check, and the
+// quoted-author-name lookup all compared raw ids without it).
+const sameId = (a, b) => String(a) === String(b);
+
+function truncateText(text, max = 120) {
+  if (!text) return "";
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
+}
+
 // Avatar component
 function Av({ user, size = 32 }) {
   return (
@@ -109,7 +124,7 @@ export function ThreadedComments({
     setQuotedCommentId(null);
   };
 
-  const handleQuoteReply = (parentCommentId, parentText, parentAuthorName) => {
+  const handleQuoteReply = (parentCommentId) => {
     setReplyingTo(parentCommentId);
     setQuotedCommentId(parentCommentId);
     setReplyText("");
@@ -138,19 +153,42 @@ export function ThreadedComments({
   // primary key — strict === between them never matched, so every reply was
   // fetched successfully but silently failed to nest under its parent.
   const getReplies = (commentId) => {
-    return comments.filter(c => c.parentCommentId != null && String(c.parentCommentId) === String(commentId));
+    return comments.filter(c => c.parentCommentId != null && sameId(c.parentCommentId, commentId));
+  };
+
+  // Given a comment, resolve what it's quoting (if anything) into an actual
+  // name + text snippet to display. Looks the quoted comment up live in the
+  // current thread first (so it reflects reality, e.g. if that comment was
+  // itself since edited); falls back to the denormalized quotedAuthorId
+  // saved at reply-creation time if the original was deleted, so the name
+  // still shows even though there's no text left to preview.
+  const resolveQuote = (quotedCommentId, fallbackAuthorId) => {
+    const quotedSource = quotedCommentId != null
+      ? comments.find(c => sameId(c.id, quotedCommentId))
+      : null;
+    const quotedAuthor = quotedSource
+      ? users.find(u => sameId(u.id, quotedSource.authorId))
+      : users.find(u => sameId(u.id, fallbackAuthorId));
+    return {
+      name: quotedAuthor?.displayName || "a comment",
+      text: quotedSource?.text
+    };
   };
 
   // Recursive comment thread renderer
   const CommentNode = ({ comment, depth = 0, isReply = false }) => {
-    const author = users.find(u => u.id === comment.authorId);
-    const isCurrentUserAuthor = comment.authorId === currentUser?.id;
+    const author = users.find(u => sameId(u.id, comment.authorId));
+    const isCurrentUserAuthor = sameId(comment.authorId, currentUser?.id);
     const replies = getReplies(comment.id);
     const isExpanded = expandedThreads[comment.id] !== false; // Default expanded
     const maxDepth = 4; // Prevent infinite nesting visually
     const canNest = depth < maxDepth;
 
     if (!author) return null;
+
+    const quote = comment.quotedCommentId
+      ? resolveQuote(comment.quotedCommentId, comment.quotedAuthorId)
+      : null;
 
     return (
       <div key={comment.id} style={{ marginLeft: isReply && depth > 0 ? 24 : 0 }}>
@@ -190,12 +228,11 @@ export function ThreadedComments({
                 {fmtTime(comment.timestamp)}
               </span>
 
-              {/* Quoted reply indicator */}
-              {comment.quotedCommentId && (
+              {/* Quoted reply indicator — shows who AND what was quoted */}
+              {quote && (
                 <div
                   style={{
                     fontSize: 12,
-                    fontStyle: "italic",
                     color: C.textMuted,
                     marginTop: 4,
                     paddingLeft: 8,
@@ -205,7 +242,12 @@ export function ThreadedComments({
                     borderRadius: 4
                   }}
                 >
-                  Replying to {users.find(u => u.id === comment.quotedAuthorId)?.displayName || "a comment"}
+                  <div style={{ fontStyle: "italic" }}>↩ Replying to {quote.name}</div>
+                  {quote.text && (
+                    <div style={{ marginTop: 2, color: C.text, wordBreak: "break-word" }}>
+                      "{truncateText(quote.text, 120)}"
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -247,7 +289,7 @@ export function ThreadedComments({
                   ↳ Reply
                 </button>
                 <button
-                  onClick={() => handleQuoteReply(comment.id, comment.text, author.displayName)}
+                  onClick={() => handleQuoteReply(comment.id)}
                   style={{
                     background: "none",
                     border: "none",
@@ -330,22 +372,26 @@ export function ThreadedComments({
           >
             <Av user={currentUser} size={24} />
             <div style={{ flex: 1 }}>
-              {quotedCommentId === comment.id && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: C.textMuted,
-                    marginBottom: 6,
-                    fontStyle: "italic",
-                    background: C.surface,
-                    padding: "4px 8px",
-                    borderRadius: 4,
-                    borderLeft: `2px solid ${C.accent}`
-                  }}
-                >
-                  📌 Quoting reply
-                </div>
-              )}
+              {sameId(quotedCommentId, comment.id) && (() => {
+                const q = resolveQuote(quotedCommentId, null);
+                return (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: C.textMuted,
+                      marginBottom: 6,
+                      fontStyle: "italic",
+                      background: C.surface,
+                      padding: "4px 8px",
+                      borderRadius: 4,
+                      borderLeft: `2px solid ${C.accent}`,
+                      wordBreak: "break-word"
+                    }}
+                  >
+                    📌 Quoting {q.name}{q.text ? `: "${truncateText(q.text, 100)}"` : ""}
+                  </div>
+                );
+              })()}
               <div style={{ display: "flex", gap: 6 }}>
                 <input
                   autoFocus
