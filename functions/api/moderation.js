@@ -7,42 +7,67 @@ function generateUUID() {
   );
 }
 
+// Turns a plain lowercase word into a boundary-safe, elongation-tolerant
+// pattern source. "damn" -> "\bd+a+m+n+\b", which matches "damn" and
+// stretched-out variants like "daaaamn" for emphasis, but \b still requires
+// a real word boundary on both sides — so it can never match as a bare
+// substring inside a longer innocent word. That's what let "hell" match
+// inside "hello" before: the old pattern only had a boundary in front of
+// the word, not after it, so anything starting with "hell" (hello, hellish,
+// shellfish) tripped it too.
+function toStretchedSource(word) {
+  return "\\b" + word.split("").map(ch => `${ch}+`).join("") + "\\b";
+}
+
+// Casual/mild words — flagged (severity "low") but not auto-rejected.
+const MILD_PROFANITY_WORDS = ["damn", "crap", "hell", "suck", "sucks", "bloody"];
+
+// Words serious enough to auto-reject the content (severity "high").
+const SEVERE_PROFANITY_WORDS = [
+  "fuck", "fucking", "fucker", "fucked", "motherfucker",
+  "shit", "shitty", "bullshit",
+  "ass", "asshole", "dumbass",
+  "bitch", "bitches",
+  "dick", "dickhead",
+  "piss", "pissed", "pissy",
+  "bastard", "arse", "arsehole",
+];
+
 /**
  * Detect profanity in text
- * Returns object with detected, severity, and patterns
+ * Returns object with detected, severity ("none" | "low" | "high"), and patterns
  */
 export function detectProfanity(text) {
-  // Comprehensive profanity patterns - detects common offensive words
-  // Uses discrete word boundaries for each capture entry to prevent false substring matches
-  const profanityPatterns = [
-    // Common profanities with discrete whole word boundaries applied to each word
-    /\b(damn|crap|arse|arsehole|bastard|bloody|suck|sucks)\b/gi,
-    /\bhell\b/gi, // Safely isolated so 'hello', 'shell', or 'hellish' will never trigger a false flag
-    
-    // Severe profanities with variations
-    /\b(f[u!@]ck|f[u!@]ck(?:ing|er|ed)?|sh[i!1]t|sh[i!1]tt?y|ass|asshole|bitch|bitches?|dick|dickhead|piss(?:ed|y)?)\b/gi,
-    
-    // Variations with special characters
-    /f[*@]ck|sh[*!]t|@ss|b[i1]tch|d[i1]ck/gi,
-    
-    // Repeated characters for emphasis
-    /(\w)\1{4,}(curse|swear|damn|hell)/gi,
+  if (!text) return { detected: false, severity: "none", patterns: [] };
+
+  // Built fresh on every call (not hoisted to module scope) — these use the
+  // /g flag, and a shared global RegExp keeps `lastIndex` between calls,
+  // which can make .test()/.match() silently skip matches on a later call.
+  // Rebuilding avoids that footgun entirely, same as before.
+  const mildPattern = new RegExp(MILD_PROFANITY_WORDS.map(toStretchedSource).join("|"), "gi");
+  const severePattern = new RegExp(SEVERE_PROFANITY_WORDS.map(toStretchedSource).join("|"), "gi");
+
+  // Obfuscated variants (f*ck, sh!t, @ss, b1tch, d1ck) — each alternative
+  // has its own boundary so e.g. "d1ck" can't match inside a longer word
+  // the way it used to (this is what flagged "Dickens" and "Dickinson").
+  // "@ss" only needs a trailing boundary: '@' isn't a word character, so
+  // it's already a natural delimiter on its own — a leading \b in front of
+  // a non-word character like '@' would actually never match after a space.
+  const obfuscatedPattern = /\bf[*@]ck\b|\bsh[*!]t\b|@ss\b|\bb[i1]tch\b|\bd[i1]ck\b/gi;
+
+  const mildMatches = text.match(mildPattern) || [];
+  const severeMatches = [
+    ...(text.match(severePattern) || []),
+    ...(text.match(obfuscatedPattern) || []),
   ];
 
-  const detected = profanityPatterns.some(pattern => pattern.test(text));
-  const patterns = [];
-
-  if (detected) {
-    profanityPatterns.forEach(pattern => {
-      const matches = text.match(pattern);
-      if (matches) patterns.push(...matches.map(m => m.toLowerCase()).slice(0, 2));
-    });
-  }
+  const severity = severeMatches.length ? "high" : mildMatches.length ? "low" : "none";
+  const patterns = [...new Set([...severeMatches, ...mildMatches].map(m => m.toLowerCase()))].slice(0, 5);
 
   return {
-    detected: detected,
-    severity: detected ? "high" : "none",
-    patterns: [...new Set(patterns)] // deduplicate
+    detected: severity !== "none",
+    severity,
+    patterns, // deduplicated
   };
 }
 
