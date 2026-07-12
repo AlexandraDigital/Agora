@@ -1,188 +1,95 @@
-import { verifyAuth, jsonResponse, errResponse, shapePost, isAdmin } from '../../_helpers.js';
-import { detectProfanity, detectSpam } from '../../moderation.js';
+import { verifyAuth, jsonResponse, errResponse, logModeration } from "../../../_helpers.js";
+import { detectProfanity, detectSpam } from "../../../moderation.js";
 
-const MAX_POST_LENGTH = 1000;
-
-async function moderateImageWithAI(base64Data, apiKey) {
-  if (!apiKey) return { safe: true };
-  const base64 = base64Data.replace(/^data:image\/\w+;base64,/, "");
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 64,
-        messages: [{
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: "image/jpeg", data: base64 },
-            },
-            {
-              type: "text",
-              text: "Does this image contain nudity, explicit sexual content, graphic violence, gore, or hate symbols? Reply with only YES or NO.",
-            },
-          ],
-        }],
-      }),
-    });
-    const data = await res.json();
-    const answer = data?.content?.[0]?.text?.trim().toUpperCase() ?? "NO";
-    if (answer.startsWith("YES")) {
-      return { safe: false, reason: "Image contains inappropriate content." };
-    }
-    return { safe: true };
-  } catch (_) {
-    return { safe: true };
-  }
+// Handles preflight browser cross-origin requests cleanly
+export async function onRequestOptions() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Max-Age": "86400",
+    },
+  });
 }
 
-export async function onRequest({ request, env, params }) {
-  const { id: postId } = params;
+// Creates a new comment on a post — a top-level comment when parentCommentId
+// is omitted, or a reply (optionally a "quote" reply) when it's set.
+export async function onRequestPost({ request, params, env }) {
+  const db = env.DB;
+  const cu = await verifyAuth(request, db);
+  if (!cu) return errResponse("Unauthorized", 401);
 
-  if (request.method === 'GET') {
-    try {
-      const db = env.DB;
-      const post = await db.prepare(
-        'SELECT * FROM posts WHERE id=?'
-      ).bind(postId).first();
+  // posts.id is a UUID string (generateUUID() at creation, TEXT PRIMARY KEY)
+  // — not an autoincrement integer like comments.id or users.id. This used
+  // to run params.id through Math.trunc(Number(...)), which turns every
+  // UUID into NaN and made every comment request 404 with "Post not found",
+  // no matter which post it was. like.js, report.js, and [id]/index.js all
+  // correctly treat params.id as a plain string for the same reason —
+  // matching that here.
+  const postId = params.id;
+  if (!postId) return errResponse("Post not found", 404);
 
-      if (!post) return errResponse('Post not found', 404);
+  const post = await db.prepare("SELECT id FROM posts WHERE id=?").bind(postId).first();
+  if (!post) return errResponse("Post not found", 404);
 
-      const shaped = await shapePost(post, db);
-      return jsonResponse(shaped);
-    } catch (err) {
-      return errResponse('Get failed: ' + err.message, 500);
-    }
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return errResponse("Invalid request body", 400);
   }
 
-  if (request.method === 'PUT') {
-    try {
-      const db = env.DB;
-      const cu = await verifyAuth(request, db);
-      if (!cu) return errResponse('Unauthorized', 401);
+  // App.jsx's comment/doCommentReply send `text`; PostCard's ThreadedComments
+  // wiring historically sent `content` — accept either so both keep working.
+  const text = String(body.text ?? body.content ?? "").trim();
+  if (!text) return errResponse("Comment can't be empty", 400);
 
-      if (!postId) return errResponse('Post ID required', 400);
-
-      const post = await db.prepare(
-        'SELECT * FROM posts WHERE id=?'
-      ).bind(postId).first();
-
-      if (!post) return errResponse('Post not found', 404);
-
-      const isAuthor = String(post.authorId) === String(cu.id);
-      const userIsAdmin = isAdmin(cu);
-
-      if (!isAuthor && !userIsAdmin) {
-        return errResponse('Forbidden', 403);
-      }
-
-      const body = await request.json();
-      const { content, media, url } = body;
-
-      if (!content?.trim()) {
-        return errResponse('Content cannot be empty', 400);
-      }
-      if (content.trim().length > MAX_POST_LENGTH) {
-        return errResponse(`Posts must be ${MAX_POST_LENGTH} characters or fewer.`, 400);
-      }
-
-      // Text moderation
-      const profanity = detectProfanity(content);
-      if (profanity.detected && profanity.severity === "high") {
-        return errResponse("Post contains inappropriate language.", 400);
-      }
-      const spam = detectSpam(content);
-      if (spam.detected && spam.severity === "high") {
-        return errResponse("Post was flagged as spam.", 400);
-      }
-
-      // Media handling: if media field is provided, update it; otherwise keep existing
-      let mediaType = post.mediaType;
-      let mediaData = post.mediaData;
-      let mediaVideoUrl = post.mediaVideoUrl;
-
-      if (Object.prototype.hasOwnProperty.call(body, 'media')) {
-        // Media field was explicitly provided (could be null, undefined, or an object)
-        if (media) {
-          // New media provided
-          if (media.type === "image" && media.thumb) {
-            const result = await moderateImageWithAI(media.thumb, env.ANTHROPIC_API_KEY);
-            if (!result.safe) {
-              return errResponse(result.reason, 400);
-            }
-          }
-          mediaType = media.type ?? null;
-          mediaData = media.thumb ?? null;
-          mediaVideoUrl = media.videoUrl ?? null;
-        } else {
-          // Media field provided but falsy (remove media)
-          mediaType = null;
-          mediaData = null;
-          mediaVideoUrl = null;
-        }
-      }
-      // else: media field not provided at all, keep existing media
-
-      await db.prepare(
-        'UPDATE posts SET content = ?, mediaType = ?, mediaData = ?, mediaVideoUrl = ?, url = ? WHERE id = ?'
-      ).bind(content.trim(), mediaType, mediaData, mediaVideoUrl, url || null, postId).run();
-
-      const updated = await db.prepare(
-        'SELECT * FROM posts WHERE id=?'
-      ).bind(postId).first();
-
-      const shaped = await shapePost(updated, db);
-      return jsonResponse(shaped);
-    } catch (err) {
-      console.error('PUT error:', err);
-      return errResponse('Update failed: ' + err.message, 500);
-    }
+  // Same text moderation posts.js (create) and [id]/index.js (edit) already
+  // apply to posts — comments had no profanity/spam check at all before,
+  // so anything that got auto-rejected on a post could still be posted
+  // freely as a comment.
+  const authorIdString = String(cu.id);
+  const profanity = detectProfanity(text);
+  if (profanity.detected && profanity.severity === "high") {
+    await logModeration(db, { type: "auto-reject", reason: "profanity", authorId: authorIdString, postId });
+    return errResponse("Comment contains inappropriate language and was not posted.", 400);
+  }
+  const spam = detectSpam(text);
+  if (spam.detected && spam.severity === "high") {
+    await logModeration(db, { type: "auto-reject", reason: "spam", authorId: authorIdString, postId });
+    return errResponse("Comment was flagged as spam and was not posted.", 400);
   }
 
-  if (request.method === 'DELETE') {
-    try {
-      const db = env.DB;
-      const cu = await verifyAuth(request, db);
-      if (!cu) return errResponse('Unauthorized', 401);
+  const parentCommentId = body.parentCommentId ? Math.trunc(Number(body.parentCommentId)) : null;
+  const quotedCommentId = body.quotedCommentId ? Math.trunc(Number(body.quotedCommentId)) : null;
 
-      if (!postId) return errResponse('Post ID required', 400);
-
-      const post = await db.prepare(
-        'SELECT * FROM posts WHERE id=?'
-      ).bind(postId).first();
-
-      if (!post) return errResponse('Post not found', 404);
-
-      const isAuthor = String(post.authorId) === String(cu.id);
-      const userIsAdmin = isAdmin(cu);
-
-      if (!isAuthor && !userIsAdmin) {
-        return errResponse('Forbidden', 403);
-      }
-
-      await db.prepare(
-        'DELETE FROM posts WHERE id=?'
-      ).bind(postId).run();
-
-      if (userIsAdmin && !isAuthor) {
-        await db.prepare(
-          "UPDATE post_reports SET status = 'actioned' WHERE postId = ?"
-        ).bind(postId).run();
-      }
-
-      return jsonResponse({ success: true });
-    } catch (err) {
-      console.error('DELETE error:', err);
-      return errResponse('Delete failed: ' + err.message, 500);
-    }
+  // quotedAuthorId is always derived server-side from the quoted comment's
+  // real author — never trust a client-supplied value here, or the
+  // "Replying to X" label in ThreadedComments could be spoofed.
+  let quotedAuthorId = null;
+  if (quotedCommentId) {
+    const quoted = await db.prepare("SELECT authorId FROM comments WHERE id=?").bind(quotedCommentId).first();
+    if (quoted) quotedAuthorId = quoted.authorId;
   }
 
-  return errResponse('Method not allowed', 405);
+  const timestamp = Date.now();
+
+  const result = await db.prepare(
+    "INSERT INTO comments (postId, authorId, text, timestamp, parentCommentId, quotedCommentId, quotedAuthorId) VALUES (?,?,?,?,?,?,?)"
+  ).bind(postId, cu.id, text, timestamp, parentCommentId, quotedCommentId, quotedAuthorId).run();
+
+  // Returned flat (not wrapped in { comment: ... }) — App.jsx's comment()
+  // and doCommentReply() push this response directly into post.comments.
+  return jsonResponse({
+    id: result.meta.last_row_id,
+    postId,
+    authorId: cu.id,
+    text,
+    timestamp,
+    parentCommentId,
+    quotedCommentId,
+    quotedAuthorId,
+  });
 }
