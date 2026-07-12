@@ -1,4 +1,5 @@
-import { verifyAuth, jsonResponse, errResponse } from "../../../_helpers.js";
+import { verifyAuth, jsonResponse, errResponse, logModeration } from "../../../_helpers.js";
+import { detectProfanity, detectSpam } from "../../../moderation.js";
 
 // Handles preflight browser cross-origin requests cleanly
 export async function onRequestOptions() {
@@ -44,6 +45,22 @@ export async function onRequestPost({ request, params, env }) {
   // wiring historically sent `content` — accept either so both keep working.
   const text = String(body.text ?? body.content ?? "").trim();
   if (!text) return errResponse("Comment can't be empty", 400);
+
+  // Same text moderation posts.js (create) and [id]/index.js (edit) already
+  // apply to posts — comments had no profanity/spam check at all before,
+  // so anything that got auto-rejected on a post could still be posted
+  // freely as a comment.
+  const authorIdString = String(cu.id);
+  const profanity = detectProfanity(text);
+  if (profanity.detected && profanity.severity === "high") {
+    await logModeration(db, { type: "auto-reject", reason: "profanity", authorId: authorIdString, postId });
+    return errResponse("Comment contains inappropriate language and was not posted.", 400);
+  }
+  const spam = detectSpam(text);
+  if (spam.detected) {
+    await logModeration(db, { type: "auto-reject", reason: "spam", authorId: authorIdString, postId });
+    return errResponse("Comment was flagged as spam and was not posted.", 400);
+  }
 
   const parentCommentId = body.parentCommentId ? Math.trunc(Number(body.parentCommentId)) : null;
   const quotedCommentId = body.quotedCommentId ? Math.trunc(Number(body.quotedCommentId)) : null;
