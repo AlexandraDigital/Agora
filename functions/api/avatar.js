@@ -45,7 +45,12 @@ export async function onRequestPost({ request, env }) {
       metadata: { contentType: ct },
     });
 
-    return new Response(JSON.stringify({ url: `/api/avatar/${cu.id}` }), {
+    // Versioned so the browser (and Cloudflare's edge cache) treats a new
+    // upload as a new resource. The URL is keyed by user id, which never
+    // changes, and the response below is cached for 24h — so without this,
+    // re-uploading a new avatar/photo would silently keep showing the old
+    // cached image at the same URL until the cache expired.
+    return new Response(JSON.stringify({ url: `/api/avatar/${cu.id}?v=${Date.now()}` }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
