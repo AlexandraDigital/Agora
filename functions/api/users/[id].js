@@ -76,8 +76,9 @@ export async function onRequestPut({ request, params, env }) {
       headers: { "Content-Type": "application/json" },
     });
   }
-}      return errResponse("Forbidden", 403);
-    }
+}     
+return errResponse("Forbidden", 403);
+    
 
     const body = await request.json();
     const { displayName, bio, avatar, avatarColor, avatarStyle, avatarImage } = body;
