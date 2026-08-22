@@ -1,6 +1,6 @@
 // GET /api/posts/by-album/:albumId - Get posts for an album
 // or GET /api/posts/by-tag/:tag - Get posts with a specific tag
-import { verifyAuth, shapePost, jsonResponse, errResponse, isBlocked } from "./_helpers.js";
+import { verifyAuth, shapePost, jsonResponse, errResponse, getHiddenAuthorIds } from "./_helpers.js";
 
 const parseTags = (t) => [...new Set((t.match(/#\w+/g)||[]).map(x=>x.toLowerCase()))];
 
@@ -61,18 +61,14 @@ export async function onRequestGet({ request, env, params }) {
       return errResponse("Invalid mode", 400);
     }
 
-    // Filter out blocked/blocking users
-    const filtered = [];
-    for (const post of posts) {
-      if (currentUser) {
-        const blocked = await isBlocked(db, currentUser.id, post.authorId);
-        if (!blocked) filtered.push(post);
-      } else {
-        filtered.push(post);
-      }
-    }
+    // Filter out blocked/muted authors in one query rather than one
+    // isBlocked() call per post.
+    const hidden = await getHiddenAuthorIds(db, currentUser?.id ?? null);
+    const filtered = hidden.size
+      ? posts.filter(post => !hidden.has(String(post.authorId)))
+      : posts;
 
-    const result = await Promise.all(filtered.map(r => shapePost(r, db)));
+    const result = await Promise.all(filtered.map(r => shapePost(r, db, currentUser?.id ?? null)));
     return jsonResponse(result);
   } catch (err) {
     return errResponse("Error: " + err.message, 500);
