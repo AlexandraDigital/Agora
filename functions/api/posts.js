@@ -1,4 +1,4 @@
-import { verifyAuth, shapePost, jsonResponse, errResponse, logModeration } from "./_helpers.js"; 
+import { verifyAuth, shapePost, jsonResponse, errResponse, logModeration, isBlocked } from "./_helpers.js"; 
 import { detectProfanity, detectSpam } from "./moderation.js"; 
 
 const MAX_POST_LENGTH = 1000; 
@@ -58,6 +58,18 @@ export async function onRequestGet({ request, env }) {
 
     let rows; 
     if (userId) { 
+      // Soft auth: viewing a profile's posts doesn't require login, but if
+      // the caller IS logged in we need to know who they are to respect a
+      // block. Unlike the feed branch below, missing/invalid auth here just
+      // means "anonymous viewer" — it doesn't reject the request.
+      currentUser = await verifyAuth(request, db);
+      if (currentUser && String(currentUser.id) !== String(userId)) {
+        const blocked = await isBlocked(db, currentUser.id, userId);
+        // Mirrors the "not found" treatment GET /api/users/:id already gives
+        // a blocked relationship. An empty list is the collection
+        // equivalent, and doesn't reveal which side did the blocking.
+        if (blocked) return jsonResponse([]);
+      }
       // Force string conversion on the query parameter input
       rows = await db.prepare( 
         "SELECT * FROM posts WHERE authorId=? ORDER BY timestamp DESC LIMIT 100" 
@@ -68,8 +80,13 @@ export async function onRequestGet({ request, env }) {
       rows = await db.prepare(` 
         SELECT p.* FROM posts p 
         WHERE (p.authorId = ? OR p.authorId IN (SELECT followingId FROM follows WHERE followerId = ?)) 
+        AND p.authorId NOT IN ( 
+          SELECT targetUserId FROM user_moderation WHERE userId=? AND action IN ('block','mute') 
+          UNION 
+          SELECT userId FROM user_moderation WHERE targetUserId=? AND action='block' 
+        ) 
         ORDER BY p.timestamp DESC LIMIT 100 
-      `).bind(currentUserId, currentUserId).all(); 
+      `).bind(currentUserId, currentUserId, currentUserId, currentUserId).all(); 
     } else { 
       if (currentUser) { 
         // Force string conversion on session ID comparisons
@@ -77,7 +94,7 @@ export async function onRequestGet({ request, env }) {
         rows = await db.prepare(` 
           SELECT * FROM posts 
           WHERE authorId NOT IN ( 
-            SELECT targetUserId FROM user_moderation WHERE userId=? AND action='block' 
+            SELECT targetUserId FROM user_moderation WHERE userId=? AND action IN ('block','mute') 
             UNION 
             SELECT userId FROM user_moderation WHERE targetUserId=? AND action='block' 
           ) 
@@ -87,7 +104,7 @@ export async function onRequestGet({ request, env }) {
         rows = await db.prepare("SELECT * FROM posts ORDER BY timestamp DESC LIMIT 100").all(); 
       } 
     } 
-    const posts = await Promise.all(rows.results.map(r => shapePost(r, db))); 
+    const posts = await Promise.all(rows.results.map(r => shapePost(r, db, currentUser?.id ?? null))); 
     return jsonResponse(posts); 
   } catch (err) { 
     return errResponse("Failed to load posts: " + err.message, 500); 
@@ -152,8 +169,8 @@ export async function onRequestPost({ request, env }) {
 
     const row = await db.prepare("SELECT * FROM posts WHERE id=?").bind(postId).first(); 
     if (!row) return errResponse("Post created but could not be retrieved", 500); 
-    return jsonResponse(await shapePost(row, db), 201); 
+    return jsonResponse(await shapePost(row, db, cu.id), 201); 
   } catch (err) { 
     return errResponse("Post failed: " + err.message, 500); 
   } 
-}
+                                               }
