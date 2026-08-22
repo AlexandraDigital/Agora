@@ -44,6 +44,29 @@ export async function isBlocked(db, viewerId, targetId) {
   }
 }
 
+// Author ids whose content viewerId shouldn't see in a feed/listing: everyone
+// they've blocked or muted, plus everyone who's blocked *them*. Being muted
+// BY someone else has no effect on what you see, so that direction is
+// block-only — mute is deliberately one-way. One query instead of an
+// isBlocked() call per row; used by feed/tag listings and comment filtering.
+// Deliberate profile visits (a specific user's posts, the user directory)
+// use the pairwise isBlocked() check above instead, since mute shouldn't
+// stop you from visiting a profile on purpose — only from seeing it in
+// passive feeds.
+export async function getHiddenAuthorIds(db, viewerId) {
+  if (viewerId == null) return new Set();
+  try {
+    const res = await db.prepare(
+      `SELECT targetUserId FROM user_moderation WHERE userId=? AND action IN ('block','mute')
+       UNION
+       SELECT userId FROM user_moderation WHERE targetUserId=? AND action='block'`
+    ).bind(String(viewerId), String(viewerId)).all();
+    return new Set((res?.results || []).map(r => String(r.targetUserId)));
+  } catch (_) {
+    return new Set();
+  }
+}
+
 export async function hashPassword(password) {
   try {
     return await bcryptjs.hash(password, 10);
@@ -350,7 +373,7 @@ export async function logModeration(db, { type, reason, authorId = null, postId 
   } catch (_) {}
 }
 
-export async function shapePost(row, db) {
+export async function shapePost(row, db, viewerId = null) {
   let likes = [];
   try {
     const likesRes = await db.prepare(
@@ -368,6 +391,17 @@ export async function shapePost(row, db) {
     // ThreadedComments.jsx already reads defensively) pass through untouched.
     comments = (commentsRes?.results || []).map(c => ({ ...c }));
   } catch (_) {}
+
+  // Drop comments from anyone the viewer has blocked or muted, or who has
+  // blocked the viewer — see getHiddenAuthorIds. viewerId is null for
+  // anonymous requests and callers that haven't been updated to pass it,
+  // so this is a no-op unless a caller opts in.
+  if (viewerId != null && comments.length) {
+    const hidden = await getHiddenAuthorIds(db, viewerId);
+    if (hidden.size) {
+      comments = comments.filter(c => !hidden.has(String(c.authorId)));
+    }
+  }
 
   return {
     id: row.id,
@@ -457,4 +491,4 @@ export async function shapeUser(row, db, viewerId = null) {
   }
 
   return shaped;
-}
+                                                                                                           }
