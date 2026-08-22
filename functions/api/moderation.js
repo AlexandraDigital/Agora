@@ -1,13 +1,6 @@
 import { verifyAuth, jsonResponse, errResponse } from "./_helpers.js";
 import { RegExpMatcher, englishDataset, englishRecommendedTransformers } from "obscenity";
 
-// Simple UUID v4 generator function
-function generateUUID() {
-  return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
-    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
-  );
-}
-
 // Turns a plain lowercase word into a boundary-safe, elongation-tolerant
 // pattern source. "damn" -> "\bd+a+m+n+\b", which matches "damn" and
 // stretched-out variants like "daaaamn" for emphasis, but \b still requires
@@ -118,145 +111,27 @@ export function detectSpam(text) {
   };
 }
 
-/**
- * Report a post
- * POST /api/moderation/report
- * Body: { postId, reason }
- */
-export async function onRequestPost({ request, env }) {
-  try {
-    const db = env.DB;
-    const cu = await verifyAuth(request, db);
-    if (!cu) return errResponse("Unauthorized", 401);
-
-    const { pathname } = new URL(request.url);
-    const body = await request.json();
-
-    // Handle report endpoint
-    if (pathname.endsWith("/report")) {
-      const { postId, reason } = body;
-      if (!postId) return errResponse("Post ID required", 400);
-      if (!reason?.trim()) return errResponse("Reason required", 400);
-
-      // Check if post exists
-      const post = await db.prepare(
-        "SELECT * FROM posts WHERE id = ?"
-      ).bind(postId).first();
-      if (!post) return errResponse("Post not found", 404);
-
-      // Check for duplicate reports from same user
-      const existing = await db.prepare(
-        "SELECT * FROM post_reports WHERE postId = ? AND reportedBy = ?"
-      ).bind(postId, cu.id).first();
-      if (existing) return errResponse("Already reported this post", 400);
-
-      // Insert report
-      const reportId = generateUUID();
-      await db.prepare(
-        "INSERT INTO post_reports (id, postId, reportedBy, reason, timestamp) VALUES (?, ?, ?, ?, ?)"
-      ).bind(reportId, postId, cu.id, reason.trim(), Date.now()).run();
-
-      return jsonResponse({ success: true, reportId }, 201);
-    }
-
-    // Handle block endpoint
-    if (pathname.match(/\/block\/[^/]+$/)) {
-      const targetUserId = pathname.split("/").pop();
-      if (!targetUserId || targetUserId === "undefined") {
-        return errResponse("User ID required", 400);
-      }
-
-      // Check if user exists
-      const user = await db.prepare(
-        "SELECT * FROM users WHERE id = ?"
-      ).bind(targetUserId).first();
-      if (!user) return errResponse("User not found", 404);
-      if (targetUserId === cu.id) return errResponse("Cannot block yourself", 400);
-
-      // Check if already blocked
-      const existing = await db.prepare(
-        "SELECT * FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = ?"
-      ).bind(cu.id, targetUserId, "block").first();
-      if (existing) return jsonResponse({ success: true, message: "Already blocked" });
-
-      // Insert block
-      const modId = generateUUID();
-      await db.prepare(
-        "INSERT INTO user_moderation (id, userId, targetUserId, action, timestamp) VALUES (?, ?, ?, ?, ?)"
-      ).bind(modId, cu.id, targetUserId, "block", Date.now()).run();
-
-      return jsonResponse({ success: true });
-    }
-
-    // Handle unblock endpoint
-    if (pathname.match(/\/unblock\/[^/]+$/)) {
-      const targetUserId = pathname.split("/").pop();
-      if (!targetUserId || targetUserId === "undefined") {
-        return errResponse("User ID required", 400);
-      }
-
-      // Remove block
-      await db.prepare(
-        "DELETE FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = ?"
-      ).bind(cu.id, targetUserId, "block").run();
-
-      return jsonResponse({ success: true });
-    }
-
-    // Handle mute endpoint
-    if (pathname.match(/\/mute\/[^/]+$/)) {
-      const targetUserId = pathname.split("/").pop();
-      if (!targetUserId || targetUserId === "undefined") {
-        return errResponse("User ID required", 400);
-      }
-
-      // Check if user exists
-      const user = await db.prepare(
-        "SELECT * FROM users WHERE id = ?"
-      ).bind(targetUserId).first();
-      if (!user) return errResponse("User not found", 404);
-      if (targetUserId === cu.id) return errResponse("Cannot mute yourself", 400);
-
-      // Check if already muted
-      const existing = await db.prepare(
-        "SELECT * FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = ?"
-      ).bind(cu.id, targetUserId, "mute").first();
-      if (existing) return jsonResponse({ success: true, message: "Already muted" });
-
-      // Insert mute
-      const modId = generateUUID();
-      await db.prepare(
-        "INSERT INTO user_moderation (id, userId, targetUserId, action, timestamp) VALUES (?, ?, ?, ?, ?)"
-      ).bind(modId, cu.id, targetUserId, "mute", Date.now()).run();
-
-      return jsonResponse({ success: true });
-    }
-
-    // Handle unmute endpoint
-    if (pathname.match(/\/unmute\/[^/]+$/)) {
-      const targetUserId = pathname.split("/").pop();
-      if (!targetUserId || targetUserId === "undefined") {
-        return errResponse("User ID required", 400);
-      }
-
-      // Remove mute
-      await db.prepare(
-        "DELETE FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = ?"
-      ).bind(cu.id, targetUserId, "mute").run();
-
-      return jsonResponse({ success: true });
-    }
-
-    return errResponse("Not found", 404);
-  } catch (err) {
-    console.error("Moderation error:", err);
-    return errResponse("Request failed: " + err.message, 500);
-  }
-}
+// This file used to also export onRequestPost, handling POST
+// /api/moderation/report, /block/:id, /unblock/:id, /mute/:id, and
+// /unmute/:id by switching on request.url's pathname. None of that ever
+// ran: Cloudflare Pages Functions routes a flat file like this one to its
+// exact path (/api/moderation) only — reaching a subpath route requires a
+// [[catchall]] file under functions/api/moderation/, which doesn't exist
+// here. Every request to those subpaths 404'd at the platform level before
+// this module ever saw them.
+//
+// The live equivalents: reporting is POST /api/posts/:id/report
+// (functions/api/posts/[id]/report.js), and block/unblock/mute/unmute are
+// POST /api/users/:id/{block,unblock,mute,unmute}
+// (functions/api/users/[id]/*.js) — both already correctly wired and in
+// use by the frontend. See moderation-api.js's git history for the other
+// dead copy of this same logic (also removed — wrong Cloudflare export
+// names, and it queried the user_blocks/user_mutes tables migration 005
+// already dropped).
 
 /**
  * Get blocked/muted users
- * GET /api/moderation/list?action=block|mute
+ * GET /api/moderation?action=block|mute
  */
 export async function onRequestGet({ request, env }) {
   try {
