@@ -1,4 +1,4 @@
-import { verifyAuth, jsonResponse, errResponse, shapePost, isAdmin } from '../../_helpers.js';
+import { verifyAuth, jsonResponse, errResponse, shapePost, isAdmin, isBlocked } from '../../_helpers.js';
 import { detectProfanity, detectSpam } from '../../moderation.js';
 
 const MAX_POST_LENGTH = 1000;
@@ -55,7 +55,13 @@ export async function onRequest({ request, env, params }) {
 
       if (!post) return errResponse('Post not found', 404);
 
-      const shaped = await shapePost(post, db);
+      const cu = await verifyAuth(request, db);
+      if (cu && String(cu.id) !== String(post.authorId)) {
+        const blocked = await isBlocked(db, cu.id, post.authorId);
+        if (blocked) return errResponse('Post not found', 404);
+      }
+
+      const shaped = await shapePost(post, db, cu?.id ?? null);
       return jsonResponse(shaped);
     } catch (err) {
       return errResponse('Get failed: ' + err.message, 500);
@@ -138,7 +144,7 @@ export async function onRequest({ request, env, params }) {
         'SELECT * FROM posts WHERE id=?'
       ).bind(postId).first();
 
-      const shaped = await shapePost(updated, db);
+      const shaped = await shapePost(updated, db, cu.id);
       return jsonResponse(shaped);
     } catch (err) {
       console.error('PUT error:', err);
