@@ -1,0 +1,21 @@
+const ALLOWED_TYPES = new Set(["audio/mpeg", "audio/mp4", "audio/webm", "audio/ogg", "audio/wav"]);
+
+export async function onRequestGet({ params, env }) {
+  try {
+    const { value, metadata } = await env.KV.getWithMetadata(`audio:${params.id}`, "arrayBuffer");
+    if (!value) return new Response("Not found", { status: 404 });
+
+    const contentType = ALLOWED_TYPES.has(metadata?.contentType) ? metadata.contentType : "audio/mpeg";
+
+    return new Response(value, {
+      headers: {
+        "Content-Type": contentType,
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "public, max-age=86400",
+        "Accept-Ranges": "bytes",
+      },
+    });
+  } catch (err) {
+    return new Response("Error: " + err.message, { status: 500 });
+  }
+}
