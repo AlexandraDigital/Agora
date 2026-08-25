@@ -13,16 +13,16 @@ export async function onRequestPost({ request, params, env }) {
     const target = await db.prepare("SELECT id FROM users WHERE id = ?").bind(targetId).first();
     if (!target) return errResponse("User not found", 404);
 
-    // Upsert into user_moderation
+    // 1. Check if the block relationship already exists using matching column names
     const existing = await db.prepare(
-      "SELECT id FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = 'block'"
+      "SELECT blockerId FROM user_blocks WHERE blockerId = ? AND blockedId = ?"
     ).bind(String(cu.id), String(targetId)).first();
 
+    // 2. If not blocked yet, insert into user_blocks table
     if (!existing) {
-      const id = `bk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       await db.prepare(
-        "INSERT INTO user_moderation (id, userId, targetUserId, action, timestamp) VALUES (?, ?, ?, 'block', ?)"
-      ).bind(id, String(cu.id), String(targetId), Date.now()).run();
+        "INSERT INTO user_blocks (blockerId, blockedId) VALUES (?, ?)"
+      ).bind(String(cu.id), String(targetId)).run();
     }
 
     return jsonResponse({ ok: true });
