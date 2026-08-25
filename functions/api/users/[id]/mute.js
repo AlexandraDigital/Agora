@@ -13,15 +13,16 @@ export async function onRequestPost({ request, params, env }) {
     const target = await db.prepare("SELECT id FROM users WHERE id = ?").bind(targetId).first();
     if (!target) return errResponse("User not found", 404);
 
+    // 1. Check if the mute relationship already exists using your exact column names
     const existing = await db.prepare(
-      "SELECT id FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = 'mute'"
+      "SELECT muterId FROM user_mutes WHERE muterId = ? AND mutedId = ?"
     ).bind(String(cu.id), String(targetId)).first();
 
+    // 2. If not muted yet, insert into user_mutes table
     if (!existing) {
-      const id = `mt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       await db.prepare(
-        "INSERT INTO user_moderation (id, userId, targetUserId, action, timestamp) VALUES (?, ?, ?, 'mute', ?)"
-      ).bind(id, String(cu.id), String(targetId), Date.now()).run();
+        "INSERT INTO user_mutes (muterId, mutedId) VALUES (?, ?)"
+      ).bind(String(cu.id), String(targetId)).run();
     }
 
     return jsonResponse({ ok: true });
