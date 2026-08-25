@@ -8,8 +8,9 @@ export async function onRequestPost({ request, params, env }) {
 
     const targetId = params.id;
 
+    // Delete the row from your user_mutes table using your exact column names
     await db.prepare(
-      "DELETE FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = 'mute'"
+      "DELETE FROM user_mutes WHERE muterId = ? AND mutedId = ?"
     ).bind(String(cu.id), String(targetId)).run();
 
     return jsonResponse({ ok: true });
