@@ -8,8 +8,9 @@ export async function onRequestPost({ request, params, env }) {
 
     const targetId = params.id;
 
+    // Delete the row from your user_blocks table using your exact column names
     await db.prepare(
-      "DELETE FROM user_moderation WHERE userId = ? AND targetUserId = ? AND action = 'block'"
+      "DELETE FROM user_blocks WHERE blockerId = ? AND blockedId = ?"
     ).bind(String(cu.id), String(targetId)).run();
 
     return jsonResponse({ ok: true });
