@@ -16,18 +16,55 @@ const T = {
 
 /**
  * DiscussionPrompt Component
- * Displays a thoughtful question to encourage deeper conversation
+ * Displays a thoughtful question to encourage deeper conversation.
+ *
+ * initialPrompt is the theme-template question computed synchronously on
+ * mount (see App.jsx) -- that stays instant, since it has to render before
+ * there's anything to fetch. "Try another question" is where this gets
+ * tailored: if postId/token are supplied, it asks the server for a
+ * question tailored to this specific post -- responding to where the
+ * comment thread actually is if one exists, or to the post's own content
+ * if it doesn't yet (GET /api/posts/:id/discussion-prompt; that route
+ * pulls comments from D1 itself, since it needs env.ANTHROPIC_API_KEY,
+ * which stays server-side). Falls straight back to the old client-only
+ * regeneratePrompt() whenever postId/token are missing or the request
+ * fails, so a caller that hasn't been updated behaves exactly as before.
  */
-export function DiscussionPrompt({ postText, initialPrompt, onPromptChange }) {
+export function DiscussionPrompt({ postText, postId, token, initialPrompt, onPromptChange }) {
   const [prompt, setPrompt] = useState(initialPrompt || "");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const handleRefresh = () => {
+  // The server tailors to the post alone when there are no comments yet
+  // (and only falls back itself if the post has no text either — e.g. an
+  // image-only post), so postId/token is all this needs to check now.
+  const canTailor = !!(postId && token);
+
+  const handleRefresh = async () => {
     setIsRefreshing(true);
+
+    if (canTailor) {
+      try {
+        const res = await fetch(`/api/posts/${postId}/discussion-prompt`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.prompt) {
+            setPrompt(data.prompt);
+            onPromptChange?.(data.prompt);
+            setIsRefreshing(false);
+            return;
+          }
+        }
+      } catch (_) {
+        // fall through to the local template generator below
+      }
+    }
+
     const newPrompt = regeneratePrompt(postText, prompt);
     setPrompt(newPrompt);
     onPromptChange?.(newPrompt);
-    setTimeout(() => setIsRefreshing(false), 200);
+    setIsRefreshing(false);
   };
 
   if (!prompt) return null;
@@ -101,12 +138,12 @@ export function DiscussionPrompt({ postText, initialPrompt, onPromptChange }) {
               opacity: isRefreshing ? 0.5 : 1,
               transition: "opacity 0.2s",
             }}
-            title="Generate a different question"
+            title={canTailor ? "Generate a question tailored to this post" : "Generate a different question"}
           >
-            🔄 Try another question
+            🔄 {isRefreshing ? "Thinking…" : "Try another question"}
           </button>
         </div>
       </div>
     </div>
   );
-}
+            }
