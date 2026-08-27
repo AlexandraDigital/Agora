@@ -1,4 +1,4 @@
-import { verifyAuth, jsonResponse, errResponse } from "../../_helpers.js";
+
 
 // Same model the other AI calls in this codebase use (moderateImageWithAI,
 // moderateVideoFramesWithAI, moderateTextSeverityWithAI in _helpers.js) —
