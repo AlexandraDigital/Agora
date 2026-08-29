@@ -30,7 +30,7 @@ const T = {
  * regeneratePrompt() whenever postId/token are missing or the request
  * fails, so a caller that hasn't been updated behaves exactly as before.
  */
-export function DiscussionPrompt({ postText, postId, token, initialPrompt, onPromptChange }) {
+export function DiscussionPrompt({ postText, mediaType, postId, token, initialPrompt, onPromptChange }) {
   const [prompt, setPrompt] = useState(initialPrompt || "");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -61,7 +61,7 @@ export function DiscussionPrompt({ postText, postId, token, initialPrompt, onPro
       }
     }
 
-    const newPrompt = regeneratePrompt(postText, prompt);
+    const newPrompt = regeneratePrompt(postText, prompt, mediaType);
     setPrompt(newPrompt);
     onPromptChange?.(newPrompt);
     setIsRefreshing(false);
