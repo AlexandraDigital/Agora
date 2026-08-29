@@ -6,24 +6,41 @@ import { verifyAuth, jsonResponse, errResponse } from "../../_helpers.js";
 // since that's the existing pattern here.
 const PROMPT_MODEL = "claude-sonnet-4-6";
 
-// Cloudflare Pages Functions bundle independently of the Vite `src` build
-// (wrangler.toml: pages_build_output_dir = "dist") and nothing else under
-// functions/ imports from ../src — so this is a standalone, much shorter
-// copy of discussionPrompts.js's zero-comment fallback, not the real
-// generator. Used only when the AI call is unavailable/fails or the post
-// has neither text nor comments to tailor to; the client's own
-// generateDiscussionPrompt already covers the same theme-detected case on
-// initial mount, so the two never need to agree exactly — this just has
-// to be a reasonable question.
-const FALLBACK_PROMPTS = [
-  "What's the most interesting aspect of this to you?",
-  "How does this relate to things you care about?",
-  "What question does this raise for you?",
-  "What's one thing you'd add to this?",
-  "Why do you think this matters?",
-];
-function fallbackPrompt() {
-  return FALLBACK_PROMPTS[Math.floor(Math.random() * FALLBACK_PROMPTS.length)];
+// Fallback pools by media type — used when the AI call is unavailable/fails,
+// or the post has neither text nor comments to tailor to. This mirrors
+// discussionPrompts.js's media-aware fallback (audio/image/video before
+// general) rather than the old flat FALLBACK_PROMPTS list, so a caption-less
+// audio post lands on "what's the story behind this piece?" instead of "why
+// do you think this matters?" here too — not just on the client's instant
+// render. The two still don't need to agree exactly; this just has to be a
+// reasonable question for the post it's shown on.
+const FALLBACK_PROMPTS = {
+  audio: [
+    "What were you going for with this?",
+    "What's the story behind this piece?",
+    "What part of making this stands out to you?",
+  ],
+  image: [
+    "What made you want to capture this moment?",
+    "What's just outside the frame here?",
+    "Is there a story behind this shot?",
+  ],
+  video: [
+    "What's the story behind this video?",
+    "What moment in this stands out to you?",
+    "What made you want to share this?",
+  ],
+  general: [
+    "What's the most interesting aspect of this to you?",
+    "How does this relate to things you care about?",
+    "What question does this raise for you?",
+    "What's one thing you'd add to this?",
+    "Why do you think this matters?",
+  ],
+};
+function fallbackPrompt(mediaType) {
+  const pool = (mediaType && FALLBACK_PROMPTS[mediaType]) || FALLBACK_PROMPTS.general;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 export async function onRequestOptions() {
@@ -40,10 +57,10 @@ export async function onRequestOptions() {
 
 // GET /api/posts/:id/discussion-prompt
 // Returns a single tailored question: { prompt: string, tailored: boolean }.
-// `tailored: false` means the AI call was skipped or failed and this is the
-// same theme-template fallback DiscussionPrompt.jsx already rendered
-// instantly on mount — so a client that only cares about *a* prompt can
-// ignore that field entirely.
+// `tailored: false` means the AI call was skipped or failed and this is a
+// media/theme-matched fallback, not text specifically written for this
+// post's content — so a client that only cares about *a* prompt can ignore
+// that field entirely.
 export async function onRequestGet({ request, params, env }) {
   const db = env.DB;
   const cu = await verifyAuth(request, db);
@@ -52,8 +69,10 @@ export async function onRequestGet({ request, params, env }) {
   const postId = params.id; // string UUID — see comment/index.js for why this must not be Number()'d
   if (!postId) return errResponse("Post not found", 404);
 
-  const post = await db.prepare("SELECT id, content FROM posts WHERE id=?").bind(postId).first();
+  const post = await db.prepare("SELECT id, content, mediaType FROM posts WHERE id=?").bind(postId).first();
   if (!post) return errResponse("Post not found", 404);
+
+  const mediaType = post.mediaType || null;
 
   // Top-level comments only, most recent first — replies branch off into
   // their own sub-conversations and would just add noise to what the main
@@ -70,7 +89,7 @@ export async function onRequestGet({ request, params, env }) {
     comments = [];
   }
 
-  const fallback = fallbackPrompt();
+  const fallback = fallbackPrompt(mediaType);
 
   if (!env.ANTHROPIC_API_KEY) {
     console.error("ANTHROPIC_API_KEY not configured — discussion prompt tailoring is DISABLED.");
@@ -86,20 +105,29 @@ export async function onRequestGet({ request, params, env }) {
   // you think this matters?".
   const postBlock = String(post.content || "").trim().slice(0, 2000);
 
-  // An image-only post (content == "") has nothing for either prompt shape
-  // above to work from — asking the model to write something "specific to
-  // what this post actually says" about no text just invites a generic
-  // question anyway, so skip the call and use the fallback directly.
-  if (!postBlock && !comments.length) {
+  // An image/audio/video-only post (content == "") still has its media type
+  // to work from now, so only skip the AI call and use the fallback
+  // directly when there's truly nothing — no caption, no attachment, no
+  // comments.
+  if (!postBlock && !mediaType && !comments.length) {
     return jsonResponse({ prompt: fallback, tailored: false });
   }
+
+  // Told to the model plainly rather than left implicit, since a caption
+  // like "My own piano melody..." plus "this post has an audio attachment"
+  // is exactly the kind of detail that turns a generic question into "what
+  // were you going for with this?" instead.
+  const mediaLine = mediaType
+    ? `This post also has a${mediaType === "audio" ? "n" : ""} ${mediaType} attachment.`
+    : "";
+  const postDescription = [postBlock || "(no caption)", mediaLine].filter(Boolean).join("\n");
 
   const promptText = comments.length
     ? `You write a single short discussion-prompt question for a social app. It's shown above the comment thread to nudge people toward a good next comment.
 
 Post:
 """
-${postBlock}
+${postDescription}
 """
 
 Existing top-level comments, most recent first:
@@ -112,10 +140,10 @@ Write ONE question that responds to where the conversation actually is right now
 
 Post:
 """
-${postBlock}
+${postDescription}
 """
 
-Write ONE question specific to what this post actually says — a detail, a claim, or an implication worth asking about — not a generic question that could sit under any post. Under 20 words. Plain text, no quotes, no preamble, no options — just the question itself.`;
+Write ONE question specific to what this post actually is — a detail or claim in the caption if there is one, or (when the caption is thin or absent) something worth asking about the ${mediaType || "post"} itself — not a generic question that could sit under any post. Under 20 words. Plain text, no quotes, no preamble, no options — just the question itself.`;
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
