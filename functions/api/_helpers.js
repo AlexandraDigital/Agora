@@ -459,6 +459,10 @@ export async function shapeUser(row, db, viewerId = null) {
     followers,
     following,
     isAdmin: isAdmin(row),
+    // Ambient presence: a static, self-authored line ("usually replies
+    // in the evening"), never a live online/offline signal. No
+    // last-seen timestamp exists anywhere in this shape on purpose.
+    presenceNote: row.presenceNote || null,
   };
 
   // Blocked/muted lists, strikes, and suspension details are only meaningful
@@ -491,4 +495,4 @@ export async function shapeUser(row, db, viewerId = null) {
   }
 
   return shaped;
-                                                                                                           }
+                                 }
