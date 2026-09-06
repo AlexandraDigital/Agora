@@ -38,7 +38,7 @@ export async function onRequestPut({ request, params, env }) {
     }
 
     const body = await request.json();
-    const { displayName, bio, avatar, avatarColor, avatarStyle, avatarImage } = body;
+    const { displayName, bio, avatar, avatarColor, avatarStyle, avatarImage, presenceNote } = body;
     // `??` can't tell "field left out of the request" apart from "field sent
     // as null on purpose" — both look nullish. That broke switching avatar
     // modes: AvatarCustomizer sends avatar:null/avatarColor:null on purpose
@@ -55,9 +55,12 @@ export async function onRequestPut({ request, params, env }) {
     if (bio !== undefined && bio.length > 300) {
       return errResponse("Bio must be 300 characters or fewer.", 400);
     }
+    if (presenceNote !== undefined && presenceNote !== null && presenceNote.length > 80) {
+      return errResponse("Presence note must be 80 characters or fewer.", 400);
+    }
 
     await db.prepare(
-      "UPDATE users SET displayName=?, bio=?, avatar=?, avatarColor=?, avatarStyle=?, avatarImage=? WHERE id=?"
+      "UPDATE users SET displayName=?, bio=?, avatar=?, avatarColor=?, avatarStyle=?, avatarImage=?, presenceNote=? WHERE id=?"
     ).bind(
       has("displayName") ? displayName : cu.displayName,
       has("bio") ? bio : cu.bio,
@@ -65,6 +68,7 @@ export async function onRequestPut({ request, params, env }) {
       has("avatarColor") ? avatarColor : cu.avatarColor,
       has("avatarStyle") ? avatarStyle : cu.avatarStyle,
       has("avatarImage") ? avatarImage : cu.avatarImage,
+      has("presenceNote") ? presenceNote : cu.presenceNote,
       targetId
     ).run();
 
